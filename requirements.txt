@@ -1,0 +1,21 @@
+# Core dependencies for MaldiBatchKit
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.13.0
+scikit-learn>=1.6.0
+matplotlib>=3.4.0
+
+# ComBat variants (Johnson, Fortin, Chen/CovBat)
+combatlearn>=2.0.0
+
+# Harmony
+# Range-pinned: MaldiBatchKit's Harmony transform reaches into
+# harmonypy's fitted state (Y, sigma, _Phi_moe, _R, _lamb).  Those
+# attributes exist on the 0.2.0 version.
+harmonypy>=0.2.0,<2
+
+# MALDI integrations
+maldiamrkit>=0.12.0
+
+# CLI
+typer>=0.9.0

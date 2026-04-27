@@ -1,0 +1,108 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MaldiBatchKit"
+dynamic = ["version", "dependencies", "optional-dependencies"]
+description = "Batch-effect correction methods for MALDI-TOF spectra in clinical AMR prediction workflows"
+readme = {file = "README.md", content-type = "text/markdown"}
+authors = [
+  { name = "Ettore Rocchi", email = "ettore.rocchi3@unibo.it" }
+]
+license = "MIT"
+requires-python = ">=3.10"
+keywords = [
+    "MALDI",
+    "MALDI-TOF",
+    "mass-spectrometry",
+    "batch-effect",
+    "ComBat",
+    "harmonization",
+    "AMR",
+    "antimicrobial-resistance",
+    "machine-learning",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Operating System :: OS Independent",
+]
+
+[project.scripts]
+maldibatchkit = "maldibatchkit.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/EttoreRocchi/MaldiBatchKit"
+Documentation = "https://maldibatchkit.readthedocs.io/"
+Source = "https://github.com/EttoreRocchi/MaldiBatchKit"
+Issues = "https://github.com/EttoreRocchi/MaldiBatchKit/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "maldibatchkit.__version__"}
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.dynamic.optional-dependencies]
+dev = {file = ["requirements-dev.txt"]}
+docs = {file = ["requirements-docs.txt"]}
+viz = {file = ["requirements-viz.txt"]}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["maldibatchkit*"]
+
+[tool.setuptools.package-data]
+maldibatchkit = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    # upstream umap-learn re-emits this every time we seed UMAP for
+    # reproducibility; it's not actionable from our side.
+    "ignore:n_jobs value 1 overridden to 1 by setting random_state.*:UserWarning:umap.umap_",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "needs_maldiamrkit: requires maldiamrkit to be installed",
+    "needs_harmonypy: requires harmonypy to be installed",
+    "needs_umap: requires umap-learn to be installed",
+]
+
+[tool.coverage.run]
+source = ["maldibatchkit"]
+omit = [
+    "maldibatchkit/cli.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+exclude = [".git", ".github", "docs/_build", "build", "dist", "*.egg-info", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "D", "B"]
+ignore = ["E501", "D100", "D104", "D105", "D107"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.isort]
+known-first-party = ["maldibatchkit"]

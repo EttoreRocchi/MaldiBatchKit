@@ -1,0 +1,3 @@
+# Optional dependencies for visualization
+umap-learn>=0.5.3
+seaborn>=0.11.0

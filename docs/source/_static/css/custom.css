@@ -1,0 +1,144 @@
+/*
+ * MaldiBatchKit custom theme overrides for pydata-sphinx-theme.
+ *
+ * Accent palette: bright cyan (#02BBE0 light / #4DD2ED dark) to
+ * differentiate the sibling docs from MaldiAMRKit's blue while
+ * keeping the MaldiSuite family feel.
+ *
+ * pydata-sphinx-theme expects --pst-color-primary as "R, G, B" (no rgb()).
+ */
+
+/* ---- Light mode ---- */
+html[data-theme="light"],
+body[data-theme="light"] {
+    --pst-color-primary: 2, 187, 224;
+    --pst-color-primary-highlight: 0, 149, 179;
+    --pst-color-primary-bg: 224, 246, 250;
+}
+
+/* ---- Dark mode ---- */
+html[data-theme="dark"],
+body[data-theme="dark"] {
+    --pst-color-primary: 77, 210, 237;
+    --pst-color-primary-highlight: 128, 221, 239;
+    --pst-color-primary-bg: 0, 37, 48;
+}
+
+/* ---- Navbar ---- */
+.bd-header {
+    border-bottom: 2px solid rgba(2, 187, 224, 0.2);
+}
+
+.navbar-brand img {
+    max-height: 48px;
+    width: auto;
+}
+
+/* ---- Sidebar active link ---- */
+.bd-sidebar .nav-link.active {
+    border-left-color: rgb(2, 187, 224);
+    font-weight: 600;
+}
+
+/* ---- sphinx-design cards ---- */
+.sd-card {
+    border-radius: 8px;
+    border: 1px solid rgba(2, 187, 224, 0.15);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.sd-card:hover {
+    box-shadow: 0 4px 16px rgba(2, 187, 224, 0.15);
+    transform: translateY(-2px);
+}
+
+.sd-card .sd-card-header {
+    background-color: rgba(2, 187, 224, 0.06);
+    border-bottom: 1px solid rgba(2, 187, 224, 0.1);
+    font-weight: 600;
+}
+
+/* ---- Feature grid cards: rounded with shadow ---- */
+.feature-grid .sd-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme="dark"] .feature-grid .sd-card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.feature-grid .sd-card:hover {
+    box-shadow: 0 6px 20px rgba(2, 187, 224, 0.25);
+    transform: translateY(-2px);
+}
+
+/* ---- Code blocks ---- */
+div.highlight {
+    border-left: 3px solid rgb(2, 187, 224);
+    border-radius: 4px;
+}
+
+/* ---- Admonitions ---- */
+.admonition.note {
+    border-left-color: rgb(2, 187, 224);
+}
+
+/* ---- Hero section (landing page) ---- */
+.hero-section {
+    text-align: center;
+    padding: 2rem 1rem 3rem;
+}
+
+/* Reset centering for subsections (Key Features, Quick Example, etc.) */
+.hero-section section {
+    text-align: left;
+}
+
+.hero-section img {
+    max-width: 280px;
+    margin-bottom: 1rem;
+}
+
+.hero-section p {
+    font-size: 1.15rem;
+    color: #555;
+    max-width: 700px;
+    margin: 0 auto 2rem;
+}
+
+html[data-theme="dark"] .hero-section p {
+    color: #bbb;
+}
+
+/* ---- Feature grid card titles ---- */
+.feature-grid .sd-card-title {
+    font-size: 1rem;
+    color: rgb(2, 187, 224);
+}
+
+html[data-theme="dark"] .feature-grid .sd-card-title {
+    color: rgb(77, 210, 237);
+}
+
+/* ---- Buttons ---- */
+.sd-btn-primary {
+    background-color: rgb(2, 187, 224) !important;
+    border-color: rgb(2, 187, 224) !important;
+}
+
+.sd-btn-primary:hover {
+    background-color: rgb(0, 149, 179) !important;
+    border-color: rgb(0, 149, 179) !important;
+}
+
+.sd-btn-outline-primary {
+    color: rgb(2, 187, 224) !important;
+    border-color: rgb(2, 187, 224) !important;
+}
+
+.sd-btn-outline-primary:hover {
+    background-color: rgb(2, 187, 224) !important;
+    color: #fff !important;
+}
