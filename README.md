@@ -20,6 +20,7 @@
   <a href="#quick-start">Quick Start</a> •
   <a href="#algorithms">Algorithms</a> •
   <a href="#diagnostics">Diagnostics</a> •
+  <a href="#maldisuite-ecosystem">MaldiSuite</a> •
   <a href="#citation">Citation</a>
 </p>
 
@@ -49,6 +50,16 @@ it in automatically. `BatchAwareWarping` reuses
 `maldiamrkit.alignment.Warping` under the hood, and the
 `MaldiSetAdapter` bridges to `maldiamrkit.MaldiSet` for end-to-end
 AMR workflows.
+
+### Install the full MaldiSuite
+
+To install MaldiBatchKit together with [MaldiAMRKit](https://github.com/EttoreRocchi/MaldiAMRKit) and [MaldiDeepKit](https://github.com/EttoreRocchi/MaldiDeepKit) at compatible versions, install the [`maldisuite`](https://pypi.org/project/maldisuite/) meta-package:
+
+```bash
+pip install maldisuite
+```
+
+Visit the **MaldiSuite** landing page at <https://ettorerocchi.github.io/MaldiSuite/>.
 
 ## Features
 
@@ -276,6 +287,16 @@ from maldibatchkit.diagnostics import (
 All metrics take the same `(X, batch)` signature. `diagnostic_report`
 composes them into a tidy DataFrame suitable for
 `plot_diagnostic_summary`.
+
+## MaldiSuite Ecosystem
+
+MaldiBatchKit is the harmonisation package of the **MaldiSuite** ecosystem:
+
+- **[MaldiAMRKit](https://github.com/EttoreRocchi/MaldiAMRKit)** - data model (`MaldiSpectrum`, `MaldiSet`), preprocessing, alignment, peak detection, differential analysis, and AMR-aware evaluation.
+- **MaldiBatchKit** (this package) - batch-effect correction and harmonisation for multi-centre / multi-instrument MALDI-TOF spectra.
+- **[MaldiDeepKit](https://github.com/EttoreRocchi/MaldiDeepKit)** - sklearn-compatible deep learning classifiers (MLP, CNN, ResNet, Transformer).
+
+The three packages share the `MaldiSet` / `MaldiSpectrum` data model and are designed to compose in a single end-to-end pipeline. Install the full suite with `pip install maldisuite`. Landing page: [MaldiSuite](<https://ettorerocchi.github.io/MaldiSuite/>).
 
 ## Citation
 
