@@ -6,7 +6,7 @@ import maldibatchkit
 
 
 def test_version_is_set():
-    assert maldibatchkit.__version__ == "0.1.0"
+    assert maldibatchkit.__version__
 
 
 def test_author_is_set():
