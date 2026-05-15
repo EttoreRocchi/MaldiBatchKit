@@ -2,8 +2,10 @@
 
 [![CI](https://github.com/EttoreRocchi/MaldiBatchKit/actions/workflows/ci.yml/badge.svg)](https://github.com/EttoreRocchi/MaldiBatchKit/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/github/EttoreRocchi/MaldiBatchKit/branch/main/graph/badge.svg)](https://codecov.io/github/EttoreRocchi/MaldiBatchKit)
-[![Docs](https://readthedocs.org/projects/maldibatchkit/badge/?version=latest)](https://maldibatchkit.readthedocs.io/en/latest/)
-[![Python](https://img.shields.io/badge/python-3.10--3.13-blue)](https://pypi.org/project/maldibatchkit/)
+[![Documentation](https://img.shields.io/badge/docs-online-blue)](https://maldibatchkit.readthedocs.io/)
+
+[![PyPI Version](https://img.shields.io/pypi/v/maldibatchkit)](https://pypi.org/project/maldibatchkit/)
+[![Python](https://img.shields.io/pypi/pyversions/maldibatchkit)](https://pypi.org/project/maldibatchkit/)
 [![License](https://img.shields.io/github/license/EttoreRocchi/MaldiBatchKit)](https://github.com/EttoreRocchi/MaldiBatchKit/blob/main/LICENSE)
 
 <p align="center">
