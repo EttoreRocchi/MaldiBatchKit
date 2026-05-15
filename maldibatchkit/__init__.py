@@ -58,7 +58,7 @@ from .metrics import (
     make_batch_scorer,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Ettore Rocchi"
 
 __all__ = [
