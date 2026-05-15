@@ -45,6 +45,19 @@ Combined Report
 
 .. autofunction:: maldibatchkit.diagnostics.diagnostic_report
 
+Benchmark
+---------
+
+:class:`~maldibatchkit.diagnostics.BatchCorrectionBenchmark` runs a
+fixed set of metrics across multiple correctors under a single
+protocol, returning tidy per-(method, metric) summaries plus the raw
+long-form observations. See :doc:`/choosing` for the recipe.
+
+.. autoclass:: maldibatchkit.diagnostics.BatchCorrectionBenchmark
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Example
 -------
 

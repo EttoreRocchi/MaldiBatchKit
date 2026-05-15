@@ -91,6 +91,24 @@ sophisticated methods.
    :undoc-members:
    :show-inheritance:
 
+.. autoclass:: maldibatchkit.NoOpCorrector
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Meta-Corrector
+--------------
+
+:class:`~maldibatchkit.AutoCorrector` exposes ``method`` as a settable
+hyperparameter so a single ``GridSearchCV`` can sweep across corrector
+families and let the downstream classifier score pick the winner. See
+:doc:`/choosing` for an end-to-end recipe.
+
+.. autoclass:: maldibatchkit.AutoCorrector
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 MALDI-Specific Corrections
 --------------------------
 

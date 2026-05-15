@@ -10,6 +10,7 @@ organised by module.
 
    corrections
    diagnostics
+   metrics
    visualization
    integrations
 
@@ -106,6 +107,42 @@ Combined Report
    :nosignatures:
 
    maldibatchkit.diagnostics.diagnostic_report
+
+Benchmark
+~~~~~~~~~
+
+.. autosummary::
+   :nosignatures:
+
+   maldibatchkit.diagnostics.BatchCorrectionBenchmark
+
+Metrics
+-------
+
+Batch-aware downstream classifier metrics for model selection that
+generalises across sites. See :doc:`metrics` for the full reference.
+
+Per-batch Metric Functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+   :nosignatures:
+
+   maldibatchkit.batch_roc_auc_score
+   maldibatchkit.batch_average_precision_score
+   maldibatchkit.batch_balanced_accuracy_score
+   maldibatchkit.batch_matthews_corrcoef
+   maldibatchkit.batch_f1_score
+   maldibatchkit.batch_precision_score
+   maldibatchkit.batch_recall_score
+
+Scorer Factory
+~~~~~~~~~~~~~~
+
+.. autosummary::
+   :nosignatures:
+
+   maldibatchkit.make_batch_scorer
 
 Visualization
 -------------

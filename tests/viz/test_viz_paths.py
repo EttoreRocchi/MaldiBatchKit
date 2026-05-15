@@ -4,16 +4,12 @@ from __future__ import annotations
 
 import importlib.util
 
-import matplotlib
+import matplotlib.pyplot as plt
+import pytest
 
-matplotlib.use("Agg")
-
-import matplotlib.pyplot as plt  # noqa: E402
-import pytest  # noqa: E402
-
-from maldibatchkit import ComBat  # noqa: E402
-from maldibatchkit.diagnostics import diagnostic_report  # noqa: E402
-from maldibatchkit.viz import plot_diagnostic_summary, plot_peak_shift  # noqa: E402
+from maldibatchkit import ComBat
+from maldibatchkit.diagnostics import diagnostic_report
+from maldibatchkit.viz import plot_diagnostic_summary, plot_peak_shift
 
 umap_available = importlib.util.find_spec("umap") is not None
 

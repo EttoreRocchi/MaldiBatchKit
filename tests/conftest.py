@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-import pytest
+import matplotlib
+
+matplotlib.use("Agg")
+
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import pytest  # noqa: E402
 
 
 @pytest.fixture

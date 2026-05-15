@@ -108,6 +108,22 @@ Key Features
       kBET, LISI, silhouette-by-batch, per-batch peak drift, TIC CoV, and
       a tidy ``diagnostic_report`` that summarises before/after deltas.
 
+   .. grid-item-card:: AutoCorrector
+      :link: choosing.html
+      :link-type: url
+
+      Meta-corrector with a swappable ``method`` hyperparameter — sweep
+      across corrector families inside ``GridSearchCV`` and let the
+      downstream AUROC pick the winner.
+
+   .. grid-item-card:: Benchmark
+      :link: choosing.html
+      :link-type: url
+
+      ``BatchCorrectionBenchmark`` scores every corrector on every
+      metric with bootstrap CIs, returning a tidy table ready for
+      paper-figure comparisons.
+
    .. grid-item-card:: MaldiSet Integration
       :link: api/integrations.html
       :link-type: url
@@ -176,6 +192,7 @@ and then applied to held-out samples via ``transform``:
 
    installation
    quickstart
+   choosing
    extending
 
 .. toctree::

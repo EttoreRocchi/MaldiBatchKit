@@ -13,6 +13,7 @@ Each notebook is self-contained and can be downloaded from the
    notebooks/03_quality_weighted_combat
    notebooks/04_maldiset_integration
    notebooks/05_avoiding_data_leakage
+   notebooks/06_choosing_a_corrector
 
 Example Workflows
 -----------------

@@ -10,17 +10,13 @@ numeric-convertible string columns > plain ndarray / RangeIndex).
 
 from __future__ import annotations
 
-import matplotlib
+import numpy as np
+import pandas as pd
+import pytest
 
-matplotlib.use("Agg")
-
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-import pytest  # noqa: E402
-
-from maldibatchkit._utils import _resolve_mz_axis  # noqa: E402
-from maldibatchkit.diagnostics import peak_position_drift  # noqa: E402
-from maldibatchkit.viz import plot_peak_shift  # noqa: E402
+from maldibatchkit._utils import _resolve_mz_axis
+from maldibatchkit.diagnostics import peak_position_drift
+from maldibatchkit.viz import plot_peak_shift
 
 
 def test_resolve_mz_explicit_values_win():

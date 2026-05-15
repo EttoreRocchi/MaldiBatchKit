@@ -14,6 +14,7 @@ This subpackage exposes two families of metrics plus a convenience
   DataFrame.
 """
 
+from .benchmark import BatchCorrectionBenchmark
 from .generic import (
     kbet,
     lisi,
@@ -26,6 +27,7 @@ from .maldi import peak_position_drift, per_batch_spectrum_count, tic_cov_per_ba
 from .report import diagnostic_report
 
 __all__ = [
+    "BatchCorrectionBenchmark",
     "diagnostic_report",
     "kbet",
     "lisi",

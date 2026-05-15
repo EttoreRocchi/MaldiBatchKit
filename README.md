@@ -24,12 +24,7 @@
   <a href="#citation">Citation</a>
 </p>
 
-MaldiBatchKit is part of the **MaldiSuite** ecosystem and complements
-[MaldiAMRKit](https://github.com/EttoreRocchi/MaldiAMRKit): where
-MaldiAMRKit handles preprocessing, alignment and AMR-aware evaluation,
-MaldiBatchKit focuses on the *harmonization* step, removing the
-inter-batch / inter-site shifts that plague multi-centre MALDI-TOF
-studies.
+MaldiBatchKit is part of the **MaldiSuite** ecosystem and complements [MaldiAMRKit](https://github.com/EttoreRocchi/MaldiAMRKit): where MaldiAMRKit handles preprocessing, alignment and AMR-aware evaluation, MaldiBatchKit focuses on the *harmonization* step, removing the inter-batch / inter-site shifts that plague multi-centre MALDI-TOF studies.
 
 ## Installation
 
@@ -45,11 +40,7 @@ pip install maldibatchkit[dev]      # testing + linting
 pip install maldibatchkit[docs]     # sphinx
 ```
 
-`maldiamrkit` is a core dependency - installing MaldiBatchKit pulls
-it in automatically. `BatchAwareWarping` reuses
-`maldiamrkit.alignment.Warping` under the hood, and the
-`MaldiSetAdapter` bridges to `maldiamrkit.MaldiSet` for end-to-end
-AMR workflows.
+`maldiamrkit` is a core dependency - installing MaldiBatchKit pulls it in automatically. `BatchAwareWarping` reuses `maldiamrkit.alignment.Warping` under the hood, and the `MaldiSetAdapter` bridges to `maldiamrkit.MaldiSet` for end-to-end AMR workflows.
 
 ### Install the full MaldiSuite
 
@@ -63,32 +54,20 @@ Visit the **MaldiSuite** landing page at <https://ettorerocchi.github.io/MaldiSu
 
 ## Features
 
-- **Unified sklearn API** (`BaseEstimator` + `TransformerMixin`) for
-  every correction method. `batch` and covariates are passed at
-  construction time and aligned to `X.index` at `fit` / `transform`,
-  so the same object works inside `Pipeline` / cross-validation
-  without data leakage.
-- **ComBat variants** (Johnson 2007, Fortin 2018, Chen 2022 CovBat)
-  re-exported from [combatlearn](https://github.com/EttoreRocchi/combatlearn).
+- **Unified sklearn API** (`BaseEstimator` + `TransformerMixin`) for every correction method. `batch` and covariates are passed at construction time and aligned to `X.index` at `fit` / `transform`, so the same object works inside `Pipeline` / cross-validation without data leakage.
+- **ComBat variants** (Johnson 2007, Fortin 2018, Chen 2022 CovBat) re-exported from [combatlearn](https://github.com/EttoreRocchi/combatlearn).
 - **Limma `removeBatchEffect`** (Ritchie et al. 2015).
 - **Harmony** (Korsunsky et al. 2019) via [harmonypy](https://github.com/slowkow/harmonypy), with a **mandatory, frozen PCA preprocessing stage** so it behaves sensibly on high-dimensional MALDI-TOF intensity matrices (tune with the `n_components=` argument).
-- **Simple baselines**: median centering, z-score per batch,
-  reference scaling.
+- **Simple baselines**: median centering, z-score per batch, reference scaling.
 - **MALDI-specific corrections**:
-  - `BatchAwareWarping` - per-batch m/z warping sharing a global
-    reference (wraps `maldiamrkit.alignment.Warping`).
-  - `QualityWeightedComBat` - weighted empirical-Bayes ComBat
-    variant where low-SNR spectra contribute less to the shrinkage
-    prior.
-  - `SpeciesAwareComBat` - convenience preset for ComBat-Fortin with
-    `species` as the protected biological covariate.
-- **Diagnostics**: kBET, LISI, silhouette-by-batch, per-batch peak
-  drift, per-batch TIC coefficient of variation, per-batch spectrum
-  count, plus a combined `diagnostic_report` DataFrame summary.
-- **Visualization**: UMAP before/after, per-batch peak-shape overlays,
-  before/after bar charts.
-- **Integration adapter**: `MaldiSetAdapter` turns a
-  `maldiamrkit.MaldiSet` into a corrected `MaldiSet` in one call.
+  - `BatchAwareWarping` - per-batch m/z warping sharing a global reference (wraps `maldiamrkit.alignment.Warping`).
+  - `QualityWeightedComBat` - weighted empirical-Bayes ComBat variant where low-SNR spectra contribute less to the shrinkage prior.
+  - `SpeciesAwareComBat` - convenience preset for ComBat-Fortin with `species` as the protected biological covariate.
+- **Diagnostics**: kBET, LISI, silhouette-by-batch, per-batch peak drift, per-batch TIC coefficient of variation, per-batch spectrum count, plus a combined `diagnostic_report` DataFrame summary.
+- **Method selection**: `AutoCorrector` exposes `method` as a settable hyperparameter so `GridSearchCV` can sweep across corrector families and let the downstream classifier metric (AUROC) decide. Ships with a `NoOpCorrector` so "do nothing" can sit on the candidate list as an honest baseline.
+- **Diagnostic benchmark**: `BatchCorrectionBenchmark` runs a fixed set of metrics across multiple correctors with stratified bootstrap CIs and a tidy `(method, metric, value, ci_lo, ci_hi)` summary, ready for paper-figure comparisons.
+- **Visualization**: UMAP before/after, per-batch peak-shape overlays, before/after bar charts.
+- **Integration adapter**: `MaldiSetAdapter` turns a `maldiamrkit.MaldiSet` into a corrected `MaldiSet` in one call.
 - **CLI**: `maldibatchkit correct ...` and `maldibatchkit diagnose ...`.
 
 ## Quick start
@@ -118,8 +97,7 @@ X_train_c = corrector.transform(X_train)
 X_test_c  = corrector.transform(X_test)   # same parameters applied to test
 ```
 
-`batch` is indexed by the same sample IDs that X uses, so the
-corrector picks the right subset on each call.
+`batch` is indexed by the same sample IDs that X uses, so the corrector picks the right subset on each call.
 
 ### MaldiSet integration
 
@@ -141,9 +119,7 @@ corrected_ds.y      # AMR labels, unchanged
 
 ### CLI
 
-The CLI is organised as `maldibatchkit correct <method>` +
-`maldibatchkit diagnose`. Every method has its own subcommand with
-only the flags it actually uses:
+The CLI is organised as `maldibatchkit correct <method>` + `maldibatchkit diagnose`. Every method has its own subcommand with only the flags it actually uses:
 
 ```bash
 # Vanilla Johnson ComBat
@@ -172,8 +148,7 @@ maldibatchkit diagnose \
     --batch-csv batch.csv --mz-csv mz.csv -o report.csv
 ```
 
-NPZ inputs bundle X, index, columns, and batch labels in one file, so
-the same commands work without sidecar CSVs:
+NPZ inputs bundle X, index, columns, and batch labels in one file, so the same commands work without sidecar CSVs:
 
 ```bash
 maldibatchkit correct combat-fortin \
@@ -182,11 +157,7 @@ maldibatchkit correct combat-fortin \
     -o corrected.npz
 ```
 
-Run `maldibatchkit correct <method> --help` for the full flag list of
-any corrector. `combat-fortin` / `combat-chen` refuse to run without
-covariates (they would silently reduce to Johnson ComBat);
-`species-combat` / `quality-combat` require their dedicated
-`--species-csv` / `--quality-csv` inputs.
+Run `maldibatchkit correct <method> --help` for the full flag list of any corrector. `combat-fortin` / `combat-chen` refuse to run without covariates (they would silently reduce to Johnson ComBat); `species-combat` / `quality-combat` require their dedicated `--species-csv` / `--quality-csv` inputs.
 
 ## Algorithms
 
@@ -201,27 +172,65 @@ covariates (they would silently reduce to Johnson ComBat);
 | Batch-aware warping            | `BatchAwareWarping`       | no                   | yes              |
 | Quality-weighted ComBat        | `QualityWeightedComBat`   | no                   | yes              |
 | Species-aware ComBat           | `SpeciesAwareComBat`      | species              | yes              |
+| Identity / no-op               | `NoOpCorrector`           | n/a                  | yes              |
+| Meta-corrector                 | `AutoCorrector`           | inherits inner       | yes              |
 
-See the `QualityWeightedComBat` docstring for the mathematical
-formulation of the weighted empirical-Bayes update.
+See the `QualityWeightedComBat` docstring for the mathematical formulation of the weighted empirical-Bayes update.
+
+### Choosing a corrector
+
+Picking among the methods above usually means asking one of two
+questions: *"which corrector gives the best AMR classifier?"* or
+*"which corrector mixes batches best while keeping species apart?"*.
+MaldiBatchKit ships one tool for each:
+
+```python
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline
+from maldibatchkit import AutoCorrector
+
+pipe = Pipeline([
+    ("correct", AutoCorrector(batch=batch, discrete_covariates=species)),
+    ("clf", LogisticRegression(max_iter=1000)),
+])
+grid = GridSearchCV(
+    pipe,
+    param_grid={"correct__method": ["noop", "combat-fortin", "harmony", "qw-combat"]},
+    scoring="roc_auc",
+)
+grid.fit(X, y)
+```
+
+```python
+from maldibatchkit import ComBat, NoOpCorrector
+from maldibatchkit.diagnostics import BatchCorrectionBenchmark
+
+bench = BatchCorrectionBenchmark(
+    correctors={
+        "none":   NoOpCorrector(batch=batch),
+        "fortin": ComBat(batch=batch, method="fortin", discrete_covariates=species),
+    },
+    metrics=("kbet", "lisi_normalized", "species_preservation"),
+    n_bootstrap=500,
+    random_state=0,
+).fit(X, batch=batch, species=species)
+bench.rank(by="species_preservation")
+```
+
+See [docs / Choosing a corrector](https://maldibatchkit.readthedocs.io/en/latest/choosing.html) for the full recipe.
 
 ## Extending MaldiBatchKit
 
-Every corrector in this package inherits from `BaseBatchCorrector`,
-which is re-exported at the top level. Subclass it, implement
-`_fit_impl` and `_transform_impl`, and you get a scikit-learn compatible,
-train/test-safe corrector for free - the base class handles index
-alignment between `X` and the stored `batch` labels, NaN / finite
-checks, DataFrame-vs-ndarray round-tripping, and the `feature_names_in_`
-/ `n_features_in_` / `get_feature_names_out` sklearn bookkeeping.
+Every corrector in this package inherits from `BaseBatchCorrector`, which is re-exported at the top level. Subclass it, implement `_fit_impl` and `_transform_impl`, and you get a scikit-learn compatible, train/test-safe corrector for free - the base class handles index alignment between `X` and the stored `batch` labels, NaN / finite checks, DataFrame-vs-ndarray round-tripping, and the `feature_names_in_` / `n_features_in_` / `get_feature_names_out` sklearn bookkeeping.
 
-Minimal custom corrector:
+Minimal custom corrector (toy example - not shipped with the package):
 
 ```python
 import pandas as pd
 from maldibatchkit import BaseBatchCorrector
 
-class MeanCentering(BaseBatchCorrector):
+class MyMeanCentering(BaseBatchCorrector):
     """Subtract per-batch means from each feature."""
 
     def _fit_impl(self, X_df, batch):
@@ -252,7 +261,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 
 pipe = Pipeline([
-    ("mean", MeanCentering(batch=batch)),
+    ("mean", MyMeanCentering(batch=batch)),   # the class defined just above
     ("scaler", StandardScaler()),
     ("clf", RandomForestClassifier()),
 ])
@@ -265,14 +274,9 @@ Conventions (see `CONTRIBUTING.md`):
 - NumPy-style docstring on every public class.
 - Fitted attributes end in `_` (`self.batch_means_`, not `self.means`).
 - `transform` must be idempotent - no side effects outside `fit`.
-- Raise a clear `ImportError` (not a bare `ModuleNotFoundError`) when
-  an optional dependency is missing; see `Harmony._require_harmonypy`
-  for the reference pattern.
+- Raise a clear `ImportError` (not a bare `ModuleNotFoundError`) when an optional dependency is missing; see `Harmony._require_harmonypy` for the reference pattern.
 
-Look at `maldibatchkit/corrections/baselines.py` for the simplest
-end-to-end references (`MedianCentering`, `ZScorePerBatch`,
-`ReferenceScaling`), or at `quality_weighted.py` for a corrector with
-an iterative fit.
+Look at `maldibatchkit/corrections/baselines.py` for the simplest end-to-end references (`MedianCentering`, `ZScorePerBatch`, `ReferenceScaling`), or at `quality_weighted.py` for a corrector with an iterative fit.
 
 ## Diagnostics
 
@@ -284,9 +288,7 @@ from maldibatchkit.diagnostics import (
 )
 ```
 
-All metrics take the same `(X, batch)` signature. `diagnostic_report`
-composes them into a tidy DataFrame suitable for
-`plot_diagnostic_summary`.
+All metrics take the same `(X, batch)` signature. `diagnostic_report` composes them into a tidy DataFrame suitable for `plot_diagnostic_summary`.
 
 ## MaldiSuite Ecosystem
 
@@ -304,8 +306,7 @@ If you use MaldiBatchKit in academic work please cite:
 
 > _Citation will be available soon._
 
-along with the upstream references for whichever methods you apply
-(Johnson 2007, Fortin 2018, Chen 2022, Ritchie 2015, Korsunsky 2019).
+along with the upstream references for whichever methods you apply (Johnson 2007, Fortin 2018, Chen 2022, Ritchie 2015, Korsunsky 2019).
 
 ## License
 
