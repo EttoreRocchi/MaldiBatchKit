@@ -9,9 +9,12 @@ classifier score (typically AUROC) decide.
 Resolution rules
 ----------------
 ``method`` accepts either a registered string alias (see
-:data:`METHOD_REGISTRY`) or a :class:`BaseBatchCorrector` *subclass*.
-Constructor kwargs are forwarded to the inner method only when its
-``__init__`` actually accepts them (resolved via
+:data:`METHOD_REGISTRY`), a :class:`BaseBatchCorrector` *subclass* or a
+ComBat class (:class:`~maldibatchkit.ComBat`,
+:class:`~maldibatchkit.SpeciesAwareComBat`).
+A registered class is routed like its string alias (e.g. ``Limma``
+like ``'limma'``). Constructor kwargs are forwarded to the inner method
+only when its ``__init__`` actually accepts them (resolved via
 :func:`inspect.signature`); unrecognised kwargs are dropped silently.
 That matters because the same ``param_grid`` typically targets several
 methods, only some of which accept e.g. ``quality`` or ``reference_batch``.
@@ -23,12 +26,12 @@ Covariate handling
 receives the kwarg name it understands:
 
 * ComBat (Fortin / Chen / Johnson) - both forwarded verbatim;
-* :class:`~maldibatchkit.Harmony` - ``discrete_covariates`` is forwarded
-  as ``covariates`` (Harmony's categorical covariates); ``continuous_covariates``
-  is dropped with a warning;
-* :class:`~maldibatchkit.Limma` - ``discrete_covariates`` is forwarded
-  as ``design`` (Limma's design of interest); ``continuous_covariates``
-  is dropped with a warning;
+* :class:`~maldibatchkit.Harmony` - both dropped with a warning:
+  harmonypy treats its ``covariates`` as nuisance variables and removes
+  them like the batch, so it cannot protect them;
+* :class:`~maldibatchkit.Limma` - ``discrete_covariates`` is one-hot
+  encoded (first level dropped) and forwarded as ``design`` (Limma's
+  design of interest); ``continuous_covariates`` is dropped with a warning;
 * :class:`~maldibatchkit.SpeciesAwareComBat` - needs ``species=`` directly
   (a biological covariate is not a generic discrete covariate);
 * :class:`~maldibatchkit.QualityWeightedComBat` - needs ``quality=`` directly;
@@ -46,7 +49,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from .._base import BaseBatchCorrector
-from .._utils import ArrayLike
+from .._utils import ArrayLike, _check_min_batch_size
 from .baselines import MedianCentering, ReferenceScaling, ZScorePerBatch
 from .combat import ComBat, SpeciesAwareComBat
 from .harmony import Harmony
@@ -93,7 +96,7 @@ _COVARIATE_ALIASES: dict[str, tuple[str, str | None]] = {
     "combat-fortin": ("discrete_covariates", "continuous_covariates"),
     "combat-chen": ("discrete_covariates", "continuous_covariates"),
     "species-combat": ("discrete_covariates", "continuous_covariates"),
-    "harmony": ("covariates", None),
+    "harmony": (None, None),
     "limma": ("design", None),
 }
 
@@ -108,12 +111,26 @@ def _resolve_method_key(method: Any) -> tuple[str | None, Any]:
                 f"{sorted(METHOD_REGISTRY)}."
             )
         return key, METHOD_REGISTRY[key]
-    if inspect.isclass(method) and issubclass(method, BaseBatchCorrector):
-        return None, method
+    if inspect.isclass(method) and issubclass(method, BaseBatchCorrector | ComBat):
+        alias = next((k for k, v in METHOD_REGISTRY.items() if v is method), None)
+        return alias, method
     raise TypeError(
-        "method must be a registered string alias or a BaseBatchCorrector "
-        f"subclass; got {type(method).__name__}."
+        "method must be a registered string alias, a BaseBatchCorrector "
+        f"subclass or a ComBat class; got {type(method).__name__}."
     )
+
+
+def _one_hot(cov: ArrayLike) -> ArrayLike:
+    """One-hot encode categorical covariates, first level dropped, keeping the type."""
+    is_pandas = isinstance(cov, pd.Series | pd.DataFrame)
+    df = pd.DataFrame(cov) if is_pandas else pd.DataFrame(np.asarray(cov))
+    if df.isna().to_numpy().any():
+        raise ValueError(
+            "discrete_covariates contains missing values; Limma's design needs "
+            "complete covariates."
+        )
+    dummies = pd.get_dummies(df.astype(str), drop_first=True).astype(float)
+    return dummies if is_pandas else dummies.to_numpy()
 
 
 def _accepted_kwargs(builder: Any) -> set[str]:
@@ -141,7 +158,6 @@ def _accepted_kwargs(builder: Any) -> set[str]:
             continue
         accepted.add(name)
     if has_var_keyword and inspect.isclass(builder) and issubclass(builder, ComBat):
-        # ComBat factory wrappers swallow extra kw; check the real class.
         try:
             sig_real = inspect.signature(ComBat.__init__)
             for name, p in sig_real.parameters.items():
@@ -175,7 +191,6 @@ def _accepted_for_factory(alias: str | None, builder: Any) -> set[str]:
             ):
                 continue
             accepted.add(name)
-        # Drop ``method`` because the factory pins it.
         accepted.discard("method")
         return accepted
     return _accepted_kwargs(builder)
@@ -188,9 +203,10 @@ class AutoCorrector(BaseBatchCorrector):
     ----------
     batch : array-like of shape (n_samples,)
         Batch labels.
-    method : str or BaseBatchCorrector subclass, default='combat-fortin'
-        Either a registered string alias (see :data:`METHOD_REGISTRY`)
-        or a :class:`BaseBatchCorrector` subclass.
+    method : str or class, default='combat-fortin'
+        A registered string alias (see :data:`METHOD_REGISTRY`), a
+        :class:`BaseBatchCorrector` subclass, or a ComBat class
+        (:class:`~maldibatchkit.ComBat`, :class:`~maldibatchkit.SpeciesAwareComBat`).
     discrete_covariates : array-like, optional
         Categorical covariates. Forwarded under the kwarg the inner
         method actually understands (see module docstring).
@@ -216,7 +232,8 @@ class AutoCorrector(BaseBatchCorrector):
     inner_ : BaseBatchCorrector
         The instantiated inner corrector, fitted to the training rows.
     feature_names_in_, n_features_in_
-        Forwarded from the inner corrector.
+        As for any corrector: the DataFrame columns, or ``x0, x1, ...`` for
+        ndarray input.
 
     Notes
     -----
@@ -242,6 +259,14 @@ class AutoCorrector(BaseBatchCorrector):
     ... )
     >>> grid.fit(X, y)  # doctest: +SKIP
     """
+
+    _sample_aligned_params = (
+        "batch",
+        "discrete_covariates",
+        "continuous_covariates",
+        "quality",
+        "species",
+    )
 
     def __init__(
         self,
@@ -270,13 +295,16 @@ class AutoCorrector(BaseBatchCorrector):
 
         candidate: dict[str, Any] = {}
 
-        # Map our generic covariate kwargs onto whatever the inner accepts.
         disc_alias, cont_alias = _COVARIATE_ALIASES.get(
             alias, ("discrete_covariates", "continuous_covariates")
         )
         if self.discrete_covariates is not None:
             if disc_alias and disc_alias in accepted:
-                candidate[disc_alias] = self.discrete_covariates
+                candidate[disc_alias] = (
+                    _one_hot(self.discrete_covariates)
+                    if disc_alias == "design"
+                    else self.discrete_covariates
+                )
             else:
                 warnings.warn(
                     f"method={self.method!r} does not accept discrete "
@@ -308,24 +336,22 @@ class AutoCorrector(BaseBatchCorrector):
 
     def _fit_impl(self, X_df: pd.DataFrame, batch: npt.NDArray[Any]) -> None:
         inner = self._build_inner()
+        if isinstance(inner, ComBat):
+            _check_min_batch_size(batch)
         inner.fit(X_df)
         self.inner_ = inner
-        self.feature_names_in_ = np.asarray(
-            getattr(inner, "feature_names_in_", X_df.columns), dtype=object
-        )
 
     def _transform_impl(
         self, X_df: pd.DataFrame, batch: npt.NDArray[Any]
     ) -> pd.DataFrame:
-        out = self.inner_.transform(X_df)
+        out = self.inner_.transform(
+            X_df.set_axis(self.inner_.feature_names_in_, axis=1)
+        )
         if isinstance(out, pd.DataFrame):
             return out
         return pd.DataFrame(np.asarray(out), index=X_df.index, columns=X_df.columns)
 
     def __getattr__(self, name: str) -> Any:
-        # Fall through to the fitted inner so consumers can read e.g.
-        # ``gamma_star_`` directly off the AutoCorrector. Trailing
-        # underscores filter to fitted attributes.
         if name.startswith("_") or not name.endswith("_"):
             raise AttributeError(name)
         inner = self.__dict__.get("inner_")

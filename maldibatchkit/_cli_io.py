@@ -13,20 +13,25 @@ Supported input / output containers
   ``columns``, ``index``, ``batch``, and arbitrary extra arrays kept as
   passthrough metadata.  This is the MaldiSet-friendly format.
 
-All auxiliary loaders align the loaded object to ``X.index`` via
-``.reindex`` when an index is available in the CSV, or positionally
-otherwise.
+All auxiliary loaders align the loaded object to ``X.index`` by sample
+ID and fail, listing the missing IDs, when the sidecar does not cover
+``X.index``. Sample IDs and labels are read as strings (``"001"`` stays
+``"001"`` and ``"NA"`` is a label, not a missing value).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import typer
 
+from ._utils import _check_unique_ids
+
 __all__ = [
+    "load_features",
     "load_matrix",
     "load_dataframe_csv",
     "load_labels_csv",
@@ -35,9 +40,41 @@ __all__ = [
 ]
 
 
-def _read_csv_indexed(path: Path) -> pd.DataFrame:
-    """Read a CSV assuming the first column is the sample index."""
-    return pd.read_csv(path, index_col=0)
+def _read_csv_indexed(path: Path, **kwargs: Any) -> pd.DataFrame:
+    """Read a CSV whose first column holds the sample IDs, kept as strings."""
+    df = pd.read_csv(path, index_col=0, **kwargs)
+    ids = pd.read_csv(path, usecols=[0], dtype=str, keep_default_na=False)
+    df.index = pd.Index(ids.iloc[:, 0].to_numpy(), name=df.index.name)
+    return df
+
+
+def _load_npz(path: Path) -> tuple[pd.DataFrame, pd.Series | None, dict]:
+    """Return ``X``, the bundled batch (or None) and the extra arrays of an NPZ."""
+    with np.load(path, allow_pickle=True) as npz:
+        if "X" not in npz.files:
+            raise typer.BadParameter(
+                f"{path} is missing the 'X' array. Expected "
+                f"np.savez(..., X=, [columns=, index=, batch=])."
+            )
+        X_arr = np.asarray(npz["X"])
+        columns = list(npz["columns"]) if "columns" in npz.files else None
+        index = list(npz["index"]) if "index" in npz.files else None
+        npz_batch = (
+            pd.Series(np.asarray(npz["batch"])) if "batch" in npz.files else None
+        )
+        extras = {
+            k: np.asarray(npz[k])
+            for k in npz.files
+            if k not in {"X", "columns", "index", "batch"}
+        }
+    return pd.DataFrame(X_arr, index=index, columns=columns), npz_batch, extras
+
+
+def load_features(path: Path) -> pd.DataFrame:
+    """Load only the feature matrix of a CSV or NPZ file."""
+    if path.suffix.lower() == ".npz":
+        return _load_npz(path)[0]
+    return _read_csv_indexed(path)
 
 
 def load_matrix(
@@ -65,24 +102,7 @@ def load_matrix(
         columns / batch).  Empty for CSV inputs.
     """
     if path.suffix.lower() == ".npz":
-        with np.load(path, allow_pickle=True) as npz:
-            if "X" not in npz.files:
-                raise typer.BadParameter(
-                    f"{path} is missing the 'X' array. Expected "
-                    f"np.savez(..., X=, [columns=, index=, batch=])."
-                )
-            X_arr = np.asarray(npz["X"])
-            columns = list(npz["columns"]) if "columns" in npz.files else None
-            index = list(npz["index"]) if "index" in npz.files else None
-            npz_batch = (
-                pd.Series(np.asarray(npz["batch"])) if "batch" in npz.files else None
-            )
-            extras = {
-                k: np.asarray(npz[k])
-                for k in npz.files
-                if k not in {"X", "columns", "index", "batch"}
-            }
-        X = pd.DataFrame(X_arr, index=index, columns=columns)
+        X, npz_batch, extras = _load_npz(path)
         if npz_batch is not None:
             if len(npz_batch) != len(X):
                 raise typer.BadParameter(
@@ -98,7 +118,6 @@ def load_matrix(
             batch = load_labels_csv(batch_csv, X.index)
         return X, batch, extras
 
-    # CSV path
     X = _read_csv_indexed(path)
     if batch_csv is None:
         raise typer.BadParameter(
@@ -112,15 +131,11 @@ def load_matrix(
 def load_labels_csv(path: Path, index: pd.Index) -> pd.Series:
     """Load a single-column sidecar CSV as a Series aligned to ``index``.
 
-    The CSV's first column is interpreted as the sample index; the
-    second column is the label value. If the CSV has no explicit sample
-    index (i.e. a single data column read with the default
-    ``RangeIndex``), the labels are assumed to already be in ``X`` order
-    and are aligned positionally.
+    The CSV's first column is the sample ID and the second the label, both
+    read as strings.
     """
-    df = pd.read_csv(path, index_col=0)
+    df = _read_csv_indexed(path, dtype=str, keep_default_na=False)
     if df.shape[1] == 0:
-        # Only an index column was present -> data is the index itself
         raise typer.BadParameter(
             f"{path} has no data columns. Expected <sample_id>,<label>."
         )
@@ -134,9 +149,26 @@ def load_labels_csv(path: Path, index: pd.Index) -> pd.Series:
     return _align_series(series, index, source=path)
 
 
-def load_dataframe_csv(path: Path, index: pd.Index) -> pd.DataFrame:
-    """Load a multi-column sidecar CSV and align it to ``index``."""
-    df = pd.read_csv(path, index_col=0)
+def load_dataframe_csv(
+    path: Path, index: pd.Index, *, categorical: bool = False
+) -> pd.DataFrame:
+    """Load a multi-column sidecar CSV and align it to ``index``.
+
+    Parameters
+    ----------
+    path : Path
+        CSV whose first column holds the sample IDs.
+    index : pd.Index
+        ``X.index`` to align to.
+    categorical : bool, default=False
+        Read the values as strings (labels such as ``"NA"`` or ``"001"``
+        are kept as written); otherwise they are parsed as numbers.
+    """
+    df = (
+        _read_csv_indexed(path, dtype=str, keep_default_na=False)
+        if categorical
+        else _read_csv_indexed(path)
+    )
     if df.shape[1] == 0:
         raise typer.BadParameter(f"{path} has no data columns.")
     return _align_frame(df, index, source=path)
@@ -180,32 +212,33 @@ def save_matrix(
         X.to_csv(path)
 
 
+def _align_by_id(obj, index: pd.Index, *, source: Path):
+    """Reindex ``obj`` onto ``index`` by sample ID (compared as strings)."""
+    if obj.index.equals(index):
+        return obj
+    keys = pd.Index(index).astype(str)
+    if obj.index.name is not None and str(obj.index.name) in keys:
+        raise typer.BadParameter(
+            f"{source} has no header row: its first line starts with sample ID "
+            f"{obj.index.name!r}. Add a header such as 'id,label'."
+        )
+    try:
+        _check_unique_ids(obj.index, str(source))
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    by_id = obj.set_axis(obj.index.astype(str), axis=0)
+    missing = keys[~keys.isin(by_id.index)]
+    if len(missing):
+        raise typer.BadParameter(
+            f"{source}: cannot align to X.index; {len(missing)} sample ID(s) "
+            f"of X are missing (first 5: {list(missing[:5])})."
+        )
+    return by_id.reindex(keys).set_axis(index, axis=0)
+
+
 def _align_series(series: pd.Series, index: pd.Index, *, source: Path) -> pd.Series:
-    if series.index.equals(index):
-        return series
-    if set(index).issubset(set(series.index)):
-        return series.reindex(index)
-    if len(series) == len(index):
-        # Positional fallback: the CSV did not carry the X sample IDs.
-        aligned = series.copy()
-        aligned.index = index
-        return aligned
-    raise typer.BadParameter(
-        f"{source}: cannot align labels to X.index. "
-        f"Labels have {len(series)} rows, X has {len(index)} rows, "
-        f"and label indices do not cover X.index."
-    )
+    return _align_by_id(series, index, source=source)
 
 
 def _align_frame(df: pd.DataFrame, index: pd.Index, *, source: Path) -> pd.DataFrame:
-    if df.index.equals(index):
-        return df
-    if set(index).issubset(set(df.index)):
-        return df.reindex(index)
-    if len(df) == len(index):
-        aligned = df.copy()
-        aligned.index = index
-        return aligned
-    raise typer.BadParameter(
-        f"{source}: cannot align to X.index. Got {len(df)} rows, X has {len(index)}."
-    )
+    return _align_by_id(df, index, source=source)

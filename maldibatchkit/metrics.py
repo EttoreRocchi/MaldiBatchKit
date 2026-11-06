@@ -213,7 +213,6 @@ def _per_batch_metric(
                 metric_fn(y_true_arr[mask], y_pred_arr[mask], **metric_kwargs)
             )
         except ValueError:
-            # Metric undefined for this fold (e.g. AUROC with one class).
             scores[i] = np.nan
 
     valid = ~np.isnan(scores)
@@ -361,6 +360,7 @@ def batch_f1_score(
         batch,
         f1_score,
         weights=weights,
+        requires_two_classes=True,
         average=average,
         **kwargs,
     )
@@ -388,6 +388,7 @@ def batch_precision_score(
         batch,
         precision_score,
         weights=weights,
+        requires_two_classes=True,
         average=average,
         pos_label=pos_label,
         **kwargs,
@@ -411,13 +412,13 @@ def batch_recall_score(
         batch,
         recall_score,
         weights=weights,
+        requires_two_classes=True,
         average=average,
         pos_label=pos_label,
         **kwargs,
     )
 
 
-# (metric_fn, default response_method)
 _SCORER_REGISTRY: dict[str, tuple[Callable[..., float], str]] = {
     "roc_auc": (batch_roc_auc_score, "predict_proba"),
     "average_precision": (batch_average_precision_score, "predict_proba"),
@@ -465,9 +466,10 @@ def make_batch_scorer(
     ----------
     batch : array-like or pandas.Series
         Per-sample batch labels for the **full** dataset. The scorer
-        slices this by ``y.index`` on each fold; pass a
+        slices this by ``y.index`` on each fold, so it must be a
         :class:`pandas.Series` indexed by the sample IDs used by ``X``
-        and ``y`` for safe alignment.
+        and ``y``; an ndarray (or folds without an index) only works
+        on the full dataset, aligned by position.
     metric : str or callable, default='roc_auc'
         Registered alias (``'roc_auc'``, ``'average_precision'``,
         ``'balanced_accuracy'``, ``'mcc'`` / ``'matthews_corrcoef'``,
@@ -524,10 +526,8 @@ def make_batch_scorer(
             f"'decision_function'; got {response!r}."
         )
 
-    if isinstance(batch, pd.Series):
-        batch_lookup = batch
-    else:
-        batch_lookup = pd.Series(np.asarray(batch))
+    batch_is_pandas = isinstance(batch, pd.Series)
+    batch_lookup = batch if batch_is_pandas else pd.Series(np.asarray(batch))
 
     def _align_batch(y: Any, X: Any) -> np.ndarray:
         if isinstance(y, pd.Series | pd.DataFrame):
@@ -535,21 +535,26 @@ def make_batch_scorer(
         elif isinstance(X, pd.DataFrame | pd.Series):
             idx = X.index
         else:
-            n = len(np.asarray(y))
-            warnings.warn(
-                "`y` is not a pandas object; aligning `batch` positionally on "
-                f"the first {n} entries of the captured batch Series. Pass `y` "
-                "as a pandas Series indexed by sample IDs for safe CV alignment.",
-                stacklevel=2,
-            )
-            return np.asarray(batch_lookup)[:n]
-        try:
-            return batch_lookup.loc[idx].to_numpy()
-        except KeyError as exc:
+            idx = None
+        if idx is not None and batch_is_pandas:
+            try:
+                return batch_lookup.loc[idx].to_numpy()
+            except KeyError as exc:
+                raise ValueError(
+                    "y's index does not align with `batch`'s index. Index both "
+                    "by the same sample IDs."
+                ) from exc
+        if len(y) == len(batch_lookup):
+            return batch_lookup.to_numpy()
+        if idx is None:
             raise ValueError(
-                "y's index does not align with `batch`'s index. Index both by "
-                "the same sample IDs."
-            ) from exc
+                "Cannot align `batch` to this fold: X and y carry no index "
+                "(ndarrays). Pass X / y as pandas objects indexed by sample IDs."
+            )
+        raise ValueError(
+            "Cannot align `batch` to this fold: `batch` has no sample IDs. "
+            "Pass `batch` as a pandas Series indexed like X / y."
+        )
 
     def _scorer(estimator: Any, X: Any, y: Any, sample_weight: Any = None) -> float:
         batch_fold = _align_batch(y, X)

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from maldibatchkit import ZScorePerBatch
 from maldibatchkit.diagnostics import (
     peak_position_drift,
     per_batch_spectrum_count,
@@ -46,7 +47,6 @@ def test_peak_position_drift_zero_on_single_batch(big_dataset):
     batch = pd.Series(["only"] * len(X), index=X.index)
     out = peak_position_drift(X, batch, top_k=5)
     assert "only" in out.index
-    # The per-batch median equals the global median -> deltas are 0
     assert np.isclose(out.loc["only", "mean_delta_mz"], 0.0)
 
 
@@ -54,7 +54,6 @@ def test_peak_position_drift_with_mz_values(rng):
     n, p = 40, 50
     idx = [f"s{i}" for i in range(n)]
     X = pd.DataFrame(rng.standard_normal((n, p)) + 1.0, index=idx)
-    # Insert two shared peaks at columns 10 and 30
     X.iloc[:, 10] += 10
     X.iloc[:, 30] += 10
     batch = pd.Series([0] * (n // 2) + [1] * (n // 2), index=idx)
@@ -84,3 +83,17 @@ def test_local_maxima_empty_on_short_array():
 def test_local_maxima_finds_interior_peaks():
     idx = _local_maxima(np.array([0, 2, 1, 3, 0]))
     assert list(idx) == [1, 3]
+
+
+def test_peak_position_drift_mean_abs_delta(shifted_peaks):
+    X, batch = shifted_peaks
+    out = peak_position_drift(X, batch)
+    assert out.loc["shift", "mean_delta_mz"] == pytest.approx(0.0)
+    assert out.loc["shift", "mean_abs_delta_mz"] == pytest.approx(6.0)
+    assert out.loc["ref", "mean_abs_delta_mz"] == pytest.approx(0.0)
+
+
+def test_tic_cov_is_nan_on_centred_data(tiny_dataset):
+    X, batch = tiny_dataset["X"], tiny_dataset["batch"]
+    Z = ZScorePerBatch(batch=batch).fit_transform(X)
+    assert tic_cov_per_batch(Z, batch).isna().all()

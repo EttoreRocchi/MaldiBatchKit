@@ -11,6 +11,23 @@ from .maldi import peak_position_drift, per_batch_spectrum_count, tic_cov_per_ba
 __all__ = ["diagnostic_report"]
 
 
+def _aligned_batch(X: ArrayLike, batch: ArrayLike) -> ArrayLike:
+    """Return ``batch`` aligned to ``X.index`` by sample ID, or by position.
+
+    A Series whose index does not cover ``X.index`` is used by position when
+    its length matches ``X``.
+    """
+    if isinstance(X, pd.DataFrame) and isinstance(batch, pd.Series):
+        if X.index.isin(batch.index).all():
+            return batch.loc[X.index]
+        if len(batch) == len(X):
+            return batch.to_numpy()
+        raise ValueError(
+            "batch index does not cover X.index and its length differs from X."
+        )
+    return batch
+
+
 def diagnostic_report(
     before: ArrayLike,
     after: ArrayLike,
@@ -31,7 +48,9 @@ def diagnostic_report(
         Feature matrix after batch correction. Must have the same shape
         as ``before``.
     batch : array-like of shape (n_samples,)
-        Batch labels.
+        Batch labels. A pandas Series is aligned to the index of
+        ``before`` and of ``after`` (when they are DataFrames) if it covers
+        it, and used by position otherwise.
     mz_values : array-like, optional
         m/z positions for the feature columns (passed to
         :func:`peak_position_drift`).
@@ -50,10 +69,11 @@ def diagnostic_report(
         the metric's improvement direction is well-defined).
     """
     rows: list[dict] = []
+    batch_b = _aligned_batch(before, batch)
+    batch_a = _aligned_batch(after, batch)
 
-    # Generic batch mixing (smaller = better for silhouette / chi2)
-    sil_b = silhouette_batch(before, batch)
-    sil_a = silhouette_batch(after, batch)
+    sil_b = silhouette_batch(before, batch_b)
+    sil_a = silhouette_batch(after, batch_a)
     rows.append(
         {
             "metric": "silhouette_batch",
@@ -65,8 +85,8 @@ def diagnostic_report(
         }
     )
 
-    kbet_b = kbet(before, batch, k=k)
-    kbet_a = kbet(after, batch, k=k)
+    kbet_b = kbet(before, batch_b, k=k)
+    kbet_a = kbet(after, batch_a, k=k)
     rows.append(
         {
             "metric": "kbet_acceptance_rate",
@@ -88,8 +108,8 @@ def diagnostic_report(
         }
     )
 
-    lisi_b = lisi(before, batch, perplexity=lisi_perplexity)
-    lisi_a = lisi(after, batch, perplexity=lisi_perplexity)
+    lisi_b = lisi(before, batch_b, perplexity=lisi_perplexity)
+    lisi_a = lisi(after, batch_a, perplexity=lisi_perplexity)
     rows.append(
         {
             "metric": "lisi",
@@ -101,9 +121,8 @@ def diagnostic_report(
         }
     )
 
-    # TIC CoV per batch
-    tic_b = tic_cov_per_batch(before, batch)
-    tic_a = tic_cov_per_batch(after, batch)
+    tic_b = tic_cov_per_batch(before, batch_b)
+    tic_a = tic_cov_per_batch(after, batch_a)
     for lvl in tic_b.index:
         rows.append(
             {
@@ -116,25 +135,27 @@ def diagnostic_report(
             }
         )
 
-    # Peak-position drift per batch (mean |delta_mz|)
-    drift_b = peak_position_drift(before, batch, mz_values=mz_values, top_k=top_k_peaks)
-    drift_a = peak_position_drift(after, batch, mz_values=mz_values, top_k=top_k_peaks)
+    drift_b = peak_position_drift(
+        before, batch_b, mz_values=mz_values, top_k=top_k_peaks
+    )
+    drift_a = peak_position_drift(
+        after, batch_a, mz_values=mz_values, top_k=top_k_peaks
+    )
     for lvl in drift_b.index:
         rows.append(
             {
                 "metric": "peak_drift_mean",
                 "scope": str(lvl),
-                "value_before": float(drift_b.loc[lvl, "mean_delta_mz"]),
-                "value_after": float(drift_a.loc[lvl, "mean_delta_mz"]),
+                "value_before": float(drift_b.loc[lvl, "mean_abs_delta_mz"]),
+                "value_after": float(drift_a.loc[lvl, "mean_abs_delta_mz"]),
                 "delta": float(
-                    drift_a.loc[lvl, "mean_delta_mz"]
-                    - drift_b.loc[lvl, "mean_delta_mz"]
+                    drift_a.loc[lvl, "mean_abs_delta_mz"]
+                    - drift_b.loc[lvl, "mean_abs_delta_mz"]
                 ),
-                "better": "zero",
+                "better": "lower",
             }
         )
 
-    # Spectrum counts (unchanged by correction; still useful in reports)
     counts = per_batch_spectrum_count(batch)
     for lvl, n in counts.items():
         rows.append(

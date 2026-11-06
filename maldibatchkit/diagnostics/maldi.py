@@ -54,6 +54,9 @@ def tic_cov_per_batch(X: ArrayLike, batch: ArrayLike) -> pd.Series:
     -------
     pd.Series
         CoV (``std/mean``) of TIC for each batch, indexed by batch level.
+        ``NaN`` when the mean TIC is not positive or is at most ``1e-8``
+        times its standard deviation (e.g. on centred or z-scored data),
+        where the CoV is undefined.
     """
     df = _to_dataframe(X)
     tic = df.sum(axis=1).to_numpy()
@@ -63,7 +66,7 @@ def tic_cov_per_batch(X: ArrayLike, batch: ArrayLike) -> pd.Series:
         vals = tic[b == lvl]
         mean = float(vals.mean())
         std = float(vals.std(ddof=0))
-        out[lvl] = std / mean if mean > 0 else float("nan")
+        out[lvl] = std / mean if mean > 1e-8 * std and mean > 0 else float("nan")
     s = pd.Series(out).sort_index()
     s.name = "tic_cov"
     s.index.name = "batch"
@@ -101,21 +104,20 @@ def peak_position_drift(
     Returns
     -------
     pd.DataFrame
-        One row per batch, with columns
-        ``mean_delta_mz``, ``median_delta_mz``, ``max_abs_delta_mz``.
+        One row per batch, with columns ``mean_delta_mz`` (signed),
+        ``mean_abs_delta_mz``, ``median_delta_mz``, ``max_abs_delta_mz``.
     """
     df = _to_dataframe(X).astype(float)
     b = np.asarray(batch)
     mz, _ = _resolve_mz_axis(df, mz_values)
 
     global_median = df.median(axis=0).to_numpy()
-    # Local maxima of the global median
     peaks_idx = _local_maxima(global_median)
     if peaks_idx.size == 0:
-        # Degenerate case: flat / monotonic spectrum
         return pd.DataFrame(
             {
                 "mean_delta_mz": [],
+                "mean_abs_delta_mz": [],
                 "median_delta_mz": [],
                 "max_abs_delta_mz": [],
             },
@@ -133,6 +135,7 @@ def peak_position_drift(
                 {
                     "batch": lvl,
                     "mean_delta_mz": float("nan"),
+                    "mean_abs_delta_mz": float("nan"),
                     "median_delta_mz": float("nan"),
                     "max_abs_delta_mz": float("nan"),
                 }
@@ -147,6 +150,7 @@ def peak_position_drift(
             {
                 "batch": lvl,
                 "mean_delta_mz": float(deltas_arr.mean()),
+                "mean_abs_delta_mz": float(np.abs(deltas_arr).mean()),
                 "median_delta_mz": float(np.median(deltas_arr)),
                 "max_abs_delta_mz": float(np.max(np.abs(deltas_arr))),
             }

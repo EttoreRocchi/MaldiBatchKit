@@ -15,13 +15,16 @@ per-sample weight (weights are normalised so the weight vector sums to
 the number of samples). Write :math:`\\bar w_i = \\sum_j w_{ij}` for the
 effective batch size.
 
-*Grand mean and pooled variance* are estimated with weights:
+*Grand mean and pooled within-batch variance* are estimated with
+weights, the latter around the weighted batch means
+:math:`\\hat\\mu_{i,g} = \\sum_j w_{ij} X_{ij,g} / \\bar w_i` (as in
+Johnson ComBat, so the batch shift does not inflate the scale):
 
 .. math::
 
     \\hat\\alpha_g &= \\frac{\\sum_{i,j} w_{ij} X_{ij,g}}{\\sum_{i,j} w_{ij}}
 
-    \\hat\\sigma_g^2 &= \\frac{\\sum_{i,j} w_{ij} (X_{ij,g} - \\hat\\alpha_g)^2}
+    \\hat\\sigma_g^2 &= \\frac{\\sum_{i,j} w_{ij} (X_{ij,g} - \\hat\\mu_{i,g})^2}
                               {\\sum_{i,j} w_{ij}}
 
 *Per-batch L/S model.* After standardisation
@@ -81,6 +84,7 @@ residualise your covariate first or use
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
@@ -88,7 +92,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from .._base import BaseBatchCorrector
-from .._utils import ArrayLike, _subset
+from .._utils import ArrayLike, _check_min_batch_size, _subset, _warn_unscaled
 
 __all__ = ["QualityWeightedComBat"]
 
@@ -97,12 +101,12 @@ def _normalise_weights(
     w: npt.NDArray[np.float64], *, eps: float
 ) -> npt.NDArray[np.float64]:
     w = np.asarray(w, dtype=float)
+    if not np.all(np.isfinite(w)):
+        raise ValueError("quality weights must be finite (no NaN or inf).")
     if np.any(w < 0):
         raise ValueError("quality weights must be non-negative.")
     if not np.any(w > 0):
         raise ValueError("at least one quality weight must be positive.")
-    # Normalise so weights sum to the number of samples: equal weights
-    # should recover the unweighted estimates exactly.
     w = w * (w.size / max(w.sum(), eps))
     return w
 
@@ -156,9 +160,12 @@ class QualityWeightedComBat(BaseBatchCorrector):
         :math:`\\hat\\gamma` / :math:`\\hat\\delta^2` directly - this is
         useful as a sanity check.
     reference_batch : Any, optional
-        Batch level to leave unchanged.
+        Batch level to leave unchanged; the other batches are mapped onto
+        it. Its effective batch size must be > 1.
     eps : float, default=1e-8
-        Numerical jitter.
+        Numerical jitter. A batch scale ``delta* <= eps`` (e.g. a bin that is
+        all zero in a batch) leaves that feature unscaled in that batch,
+        with a warning.
     max_iter : int, default=50
         Hard cap on the parametric fixed-point iterations.
     tol : float, default=1e-4
@@ -196,6 +203,8 @@ class QualityWeightedComBat(BaseBatchCorrector):
     predecessor of the scheme implemented here.
     """
 
+    _sample_aligned_params = ("batch", "quality")
+
     def __init__(
         self,
         batch: ArrayLike,
@@ -230,9 +239,10 @@ class QualityWeightedComBat(BaseBatchCorrector):
         X = X_df.to_numpy(dtype=float)
         n_samples, n_features = X.shape
 
-        w = self._weights_at(X_df.index)  # shape (n,)
+        w = self._weights_at(X_df.index)
         levels = np.unique(batch)
         self.batch_levels_ = levels
+        _check_min_batch_size(batch)
 
         if self.reference_batch is not None and self.reference_batch not in levels:
             raise ValueError(
@@ -243,10 +253,15 @@ class QualityWeightedComBat(BaseBatchCorrector):
 
         W = w.sum()
         self.grand_mean_ = (w[:, None] * X).sum(axis=0) / max(W, self.eps)
-        centred = X - self.grand_mean_
-        self.pooled_var_ = (w[:, None] * centred**2).sum(axis=0) / max(W, self.eps)
+        resid = np.empty_like(X)
+        for lvl in levels:
+            mask = batch == lvl
+            w_l = w[mask]
+            batch_mean = (w_l[:, None] * X[mask]).sum(axis=0) / max(w_l.sum(), self.eps)
+            resid[mask] = X[mask] - batch_mean
+        self.pooled_var_ = (w[:, None] * resid**2).sum(axis=0) / max(W, self.eps)
         std = np.sqrt(self.pooled_var_ + self.eps)
-        Z = centred / std
+        Z = (X - self.grand_mean_) / std
 
         n_batches = len(levels)
         eff = np.zeros(n_batches)
@@ -270,17 +285,33 @@ class QualityWeightedComBat(BaseBatchCorrector):
             delta_hat2[i] = (w_i[:, None] * resid**2).sum(axis=0) / denom
 
         self.effective_batch_sizes_ = eff
+        if self.reference_batch is not None:
+            ref_eff = float(eff[levels == self.reference_batch][0])
+            if ref_eff <= 1.0:
+                raise ValueError(
+                    f"reference_batch={self.reference_batch!r} has effective "
+                    f"batch size {ref_eff:.3g} <= 1, so its variance cannot be "
+                    f"estimated; choose a reference batch with higher-quality "
+                    f"spectra."
+                )
+        if np.any(eff <= 1.0):
+            warnings.warn(
+                f"effective batch size <= 1 for batch(es) "
+                f"{levels[eff <= 1.0].tolist()}: their quality weights are tiny "
+                f"relative to the other batches, so their variance estimates "
+                f"are unreliable.",
+                stacklevel=3,
+            )
 
-        gamma_bar = gamma_hat.mean(axis=1)
-        t2 = gamma_hat.var(axis=1, ddof=1)
-        a_prior = _aprior(delta_hat2)
-        b_prior = _bprior(delta_hat2)
-
-        if not self.parametric:
+        if not self.parametric or n_features < 2:
             gamma_star = gamma_hat
             delta_star = delta_hat2
             self.n_iter_ = 0
         else:
+            gamma_bar = gamma_hat.mean(axis=1)
+            t2 = gamma_hat.var(axis=1, ddof=1)
+            a_prior = _aprior(delta_hat2)
+            b_prior = _bprior(delta_hat2)
             gamma_star = gamma_hat.copy()
             delta_star = delta_hat2.copy()
             n_iter = 0
@@ -308,6 +339,16 @@ class QualityWeightedComBat(BaseBatchCorrector):
                     break
             self.n_iter_ = n_iter
 
+        if self.reference_batch is not None:
+            r = int(np.flatnonzero(levels == self.reference_batch)[0])
+            ratio = delta_star / np.clip(delta_hat2[r], self.eps, None)
+            gamma_star = gamma_star - gamma_hat[r] * np.sqrt(ratio)
+            delta_star = ratio
+
+        small = delta_star <= self.eps
+        _warn_unscaled(int(small.sum()), self.eps)
+        delta_star = np.where(small, 1.0, delta_star)
+
         self.gamma_star_ = gamma_star
         self.delta_star_ = delta_star
 
@@ -329,8 +370,6 @@ class QualityWeightedComBat(BaseBatchCorrector):
                 gamma = self.gamma_star_[i]
                 delta = self.delta_star_[i]
             else:
-                # Unknown batch at transform time: correct using zero
-                # per-batch effect (identity in standardised space).
                 gamma = np.zeros(X.shape[1])
                 delta = np.ones(X.shape[1])
             z_corr = (Z[mask] - gamma) / np.sqrt(np.clip(delta, self.eps, None))

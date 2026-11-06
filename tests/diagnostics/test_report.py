@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
+import pytest
 
 from maldibatchkit import ComBat
 from maldibatchkit.diagnostics import diagnostic_report
@@ -22,7 +24,6 @@ def test_report_columns_and_rows(big_dataset):
         "better",
     }
     assert expected_cols.issubset(report.columns)
-    # Contains the four overall metrics
     overall_metrics = set(report[report["scope"] == "overall"]["metric"])
     assert {
         "silhouette_batch",
@@ -38,3 +39,28 @@ def test_report_identity_after_equals_before(big_dataset):
     identity_rows = report[report["metric"].isin(["silhouette_batch", "lisi"])]
     for _, row in identity_rows.iterrows():
         assert row["value_before"] == row["value_after"]
+
+
+def test_report_peak_drift_uses_absolute_shifts(shifted_peaks):
+    X, batch = shifted_peaks
+    report = diagnostic_report(X, X, batch, k=5, lisi_perplexity=5.0)
+    row = report[(report["metric"] == "peak_drift_mean") & (report["scope"] == "shift")]
+    assert row["value_before"].iloc[0] == pytest.approx(6.0)
+    assert row["better"].iloc[0] == "lower"
+
+
+def test_report_aligns_batch_by_index(tiny_dataset, rng):
+    X, batch = tiny_dataset["X"], tiny_dataset["batch"]
+    after = X.iloc[rng.permutation(len(X))]
+    report = diagnostic_report(X, after, batch, top_k_peaks=5)
+    for metric in ("kbet_acceptance_rate", "lisi", "tic_cov"):
+        rows = report[report["metric"] == metric]
+        np.testing.assert_allclose(rows["value_after"], rows["value_before"])
+
+
+def test_report_accepts_positional_batch_series(tiny_dataset):
+    X, batch = tiny_dataset["X"], tiny_dataset["batch"]
+    positional = pd.Series(batch.to_numpy())
+    got = diagnostic_report(X, X, positional, top_k_peaks=5)
+    expected = diagnostic_report(X, X, batch.to_numpy(), top_k_peaks=5)
+    pd.testing.assert_frame_equal(got, expected)

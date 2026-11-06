@@ -17,6 +17,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/batch_correction.svg" alt="Animated scatter plot: before correction MALDI-TOF samples cluster by acquisition site; after MaldiBatchKit the site effect is removed and samples cluster by species" width="720"/>
+</p>
+
+<p align="center">
   <a href="#installation">Installation</a> •
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
@@ -159,7 +163,7 @@ maldibatchkit correct combat-fortin \
     -o corrected.npz
 ```
 
-Run `maldibatchkit correct <method> --help` for the full flag list of any corrector. `combat-fortin` / `combat-chen` refuse to run without covariates (they would silently reduce to Johnson ComBat); `species-combat` / `quality-combat` require their dedicated `--species-csv` / `--quality-csv` inputs.
+Run `maldibatchkit correct <method> --help` for the full flag list of any corrector. `combat-fortin` refuses to run without covariates (it would silently reduce to Johnson ComBat); `combat-chen` without covariates is plain CovBat (Johnson ComBat plus the covariance correction); `species-combat` / `quality-combat` require their dedicated `--species-csv` / `--quality-csv` inputs.
 
 ## Algorithms
 
@@ -167,7 +171,7 @@ Run `maldibatchkit correct <method> --help` for the full flag list of any correc
 |--------------------------------|---------------------------|----------------------|------------------|
 | ComBat (Johnson, Fortin, Chen) | `ComBat`                  | Fortin / Chen        | yes              |
 | Limma                          | `Limma`                   | via `design=`        | yes              |
-| Harmony                        | `Harmony`                 | via `covariates=`    | yes              |
+| Harmony                        | `Harmony`                 | no (removes them)    | yes              |
 | Median centering               | `MedianCentering`         | no                   | yes              |
 | Z-score per batch              | `ZScorePerBatch`          | no                   | yes              |
 | Reference scaling              | `ReferenceScaling`        | no                   | yes              |

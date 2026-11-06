@@ -36,7 +36,6 @@ def test_plot_diagnostic_summary(tiny_dataset):
     report = diagnostic_report(X, corrected, batch, top_k_peaks=3)
     fig, axes = plot_diagnostic_summary(report)
     assert fig is not None
-    # Four 'overall' metrics => four subplot axes
     overall_metrics = report[report["scope"] == "overall"]["metric"].nunique()
     assert len(axes) == overall_metrics
 
@@ -56,7 +55,6 @@ def test_plot_diagnostic_summary_list_of_scopes(tiny_dataset):
     batches = batch.unique().tolist()
     fig, axes = plot_diagnostic_summary(report, scope=batches)
     assert fig is not None
-    # per-batch metrics: tic_cov, peak_drift_mean, n_spectra = 3 subplots
     per_batch_metrics = report[report["scope"].isin(batches)]["metric"].nunique()
     assert len(axes) == per_batch_metrics
 
@@ -149,10 +147,28 @@ def test_plot_batch_umap_requires_umap(monkeypatch, tiny_dataset):
     X, batch = tiny_dataset["X"], tiny_dataset["batch"]
     import maldibatchkit.viz.umap as umap_mod
 
-    # Force the umap import to fail regardless of whether the extra is present
     def fake_import():
         raise ImportError("fake: umap-learn missing")
 
     monkeypatch.setattr(umap_mod, "_require_umap", fake_import)
     with pytest.raises(ImportError, match="fake"):
         umap_mod.plot_batch_umap(X, X, batch)
+
+
+@pytest.mark.parametrize("bad", ["short", "nan"])
+def test_plot_peak_shift_rejects_invalid_labels(tiny_dataset, bad):
+    X, batch = tiny_dataset["X"], tiny_dataset["batch"]
+    labels = batch.iloc[:-1] if bad == "short" else batch.where(batch == "b0")
+    with pytest.raises(ValueError, match="batch"):
+        plot_peak_shift(labels, X)
+
+
+@pytest.mark.skipif(not umap_available, reason="umap-learn not installed")
+@pytest.mark.parametrize("bad", ["short", "nan"])
+def test_plot_batch_umap_rejects_invalid_labels(tiny_dataset, bad):
+    from maldibatchkit.viz import plot_batch_umap
+
+    X, batch = tiny_dataset["X"], tiny_dataset["batch"]
+    labels = batch.iloc[:-1] if bad == "short" else batch.where(batch == "b0")
+    with pytest.raises(ValueError, match="batch"):
+        plot_batch_umap(X, X, labels)

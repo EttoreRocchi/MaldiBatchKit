@@ -81,8 +81,10 @@ table is:
 ============================  ==========================================
 ``AutoCorrector`` argument    Forwarded as ...
 ============================  ==========================================
-``discrete_covariates``       ComBat ``discrete_covariates``,
-                              Harmony ``covariates``, Limma ``design``
+``discrete_covariates``       ComBat ``discrete_covariates``, Limma
+                              ``design`` (one-hot encoded); dropped with
+                              a warning for Harmony, whose
+                              ``covariates`` are removed like the batch
 ``continuous_covariates``     ComBat ``continuous_covariates``
 ``quality``                   ``QualityWeightedComBat.quality``
 ``species``                   ``SpeciesAwareComBat.species``
@@ -111,7 +113,7 @@ under the chosen protocol.
            "limma":    Limma(batch=batch, design=species_dummies),
            "fortin":   ComBat(batch=batch, method="fortin",
                               discrete_covariates=species),
-           "harmony":  Harmony(batch=batch, covariates=species, verbose=False),
+           "harmony":  Harmony(batch=batch, verbose=False),
        },
        metrics=("kbet", "lisi_normalized", "species_preservation",
                 "tic_cov_per_batch"),
@@ -121,7 +123,7 @@ under the chosen protocol.
    bench.fit(X, batch=batch, species=species)
 
    print(bench.rank(by="species_preservation"))
-   bench.plot()  # bar facet per metric, error bars from the bootstrap CIs
+   bench.plot()  # bar facet per metric, error bars from the subsample CIs
 
 Protocols
 ^^^^^^^^^
@@ -144,7 +146,8 @@ Two tables are always available after ``fit``:
   bootstrap iteration). Use it to compute custom statistics or to
   drive a raincloud / strip plot.
 * ``bench.results_`` — one row per (method, metric) with ``value``
-  (mean), ``ci_lo`` / ``ci_hi`` (2.5 / 97.5 percentile), ``std``, ``n``,
+  (the full-data estimate when resampling, otherwise the mean across
+  repeats), ``ci_lo`` / ``ci_hi`` (2.5 / 97.5 percentile), ``std``, ``n``,
   and ``better`` (``'higher'``, ``'lower'``, or ``'n/a'`` for user
   callables). The interval columns hold ``NaN`` when fewer than two
   bootstraps and fewer than three repeats are available — don't read a
@@ -156,12 +159,18 @@ the **uncorrected** ``X`` and is useful as a reference line in plots.
 Bootstrap modes
 ^^^^^^^^^^^^^^^
 
+Every resample draws ``subsample_fraction`` (default 0.8) of each batch
+**without replacement**: duplicated rows would be distance-0 same-batch
+neighbours and bias the kNN metrics. kNN / perplexity-based metrics also
+depend on the number of samples, so the interval describes the metric at
+the subsample size and may not contain the full-data ``value``.
+
 ``bootstrap_mode="resample_metric"`` (default, fast) fits each corrector
-once and resamples rows of the corrected matrix to give the CI. Use it
+once and subsamples rows of the corrected matrix to give the CI. Use it
 when you want CIs that reflect metric sampling noise on a fixed fit.
 
-``bootstrap_mode="refit"`` resamples rows of ``X`` (stratified by
-batch) and refits the corrector on each bootstrap. Slower
+``bootstrap_mode="refit"`` subsamples rows of ``X`` (stratified by
+batch) and refits the corrector on each resample. Slower
 (``n_correctors × n_bootstrap`` extra fits per repeat), but the CI also
 captures corrector stability. Use it when you want to advertise a
 method's reproducibility.

@@ -73,7 +73,6 @@ def plot_diagnostic_summary(
             f"Available scopes: {sorted(report_df['scope'].unique())}."
         )
 
-    # Preserve the metric order as it appears in the report
     metrics: list[str] = []
     for m in df["metric"].tolist():
         if m not in metrics:
@@ -134,14 +133,12 @@ def plot_diagnostic_summary(
             ax.set_xticks([])
         ax.set_title(metric, fontsize=10)
         ax.grid(axis="y", alpha=0.3)
-        # Hairline guide at 0 for signed metrics
         if sub[["value_before", "value_after"]].astype(float).min().min() < 0:
             ax.axhline(0.0, color="k", lw=0.5)
         if i == 0:
             ax.legend(fontsize=8, loc="best")
         used_axes.append(ax)
 
-    # Turn off any leftover subplot slots
     for j in range(n_metrics, ax_flat.size):
         ax_flat[j].set_axis_off()
 

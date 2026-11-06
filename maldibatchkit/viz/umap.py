@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.decomposition import PCA
 
-from .._utils import ArrayLike
+from .._utils import ArrayLike, _check_labels
 
 __all__ = ["plot_batch_umap"]
 
@@ -86,7 +86,9 @@ def plot_batch_umap(
         )
     if color_by == "species" and species is None:
         raise ValueError("color_by='species' requires the `species` argument.")
-    labels = np.asarray(batch if color_by == "batch" else species)
+    labels = _check_labels(
+        batch if color_by == "batch" else species, before_arr.shape[0], color_by
+    )
 
     def _maybe_pca(X: np.ndarray) -> np.ndarray:
         if pca_preprocess is None:

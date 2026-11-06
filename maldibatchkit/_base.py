@@ -27,7 +27,14 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_array, check_is_fitted
 
-from ._utils import ArrayLike, _ensure_index, _subset
+from ._utils import (
+    ArrayLike,
+    _check_label_values,
+    _check_positional_alignment,
+    _check_unique_ids,
+    _ensure_index,
+    _subset,
+)
 
 
 def _check_array_finite(X: Any) -> None:
@@ -65,12 +72,21 @@ class BaseBatchCorrector(BaseEstimator, TransformerMixin):  # type: ignore[misc]
     :meth:`get_params` / :meth:`set_params` work.
     """
 
+    _sample_aligned_params: tuple[str, ...] = ("batch",)
+
     def __init__(self, batch: ArrayLike) -> None:
         self.batch = batch
 
     def _validate_X(self, X: ArrayLike) -> None:
         """Validate the feature matrix."""
         _check_array_finite(X)
+
+    def _check_sample_alignment(self, X: ArrayLike) -> None:
+        """Reject pandas per-sample inputs that an ndarray ``X`` cannot match."""
+        if isinstance(X, pd.DataFrame | pd.Series):
+            return
+        for name in self._sample_aligned_params:
+            _check_positional_alignment(getattr(self, name, None), len(X), name)
 
     def _prepare_fit(
         self, X: ArrayLike
@@ -87,7 +103,10 @@ class BaseBatchCorrector(BaseEstimator, TransformerMixin):  # type: ignore[misc]
             The shared index used by ``X`` and ``batch``.
         """
         self._validate_X(X)
+        self._check_sample_alignment(X)
         idx = _ensure_index(X)
+        _check_unique_ids(idx, "X")
+        self._fitted_on_frame_ = isinstance(X, pd.DataFrame)
         if isinstance(X, pd.DataFrame):
             self.feature_names_in_ = np.asarray(X.columns, dtype=object)
             X_df = X
@@ -104,11 +123,7 @@ class BaseBatchCorrector(BaseEstimator, TransformerMixin):  # type: ignore[misc]
                 raise ValueError(f"`batch` must be 1-D; got shape {batch_vec.shape}.")
             batch_vec = batch_vec.iloc[:, 0]
         batch_ser = pd.Series(batch_vec, index=idx)
-        if batch_ser.isna().any():
-            raise ValueError(
-                f"batch contains {int(batch_ser.isna().sum())} NaN value(s); "
-                f"all batch labels must be non-null."
-            )
+        _check_label_values(batch_ser, "batch")
         return X_df, batch_ser.to_numpy(), idx
 
     def _prepare_transform(
@@ -117,13 +132,32 @@ class BaseBatchCorrector(BaseEstimator, TransformerMixin):  # type: ignore[misc]
         """Run common ``transform``-time bookkeeping."""
         check_is_fitted(self)
         self._validate_X(X)
+        self._check_sample_alignment(X)
         idx = _ensure_index(X)
+        _check_unique_ids(idx, "X")
         was_df = isinstance(X, pd.DataFrame)
         X_df = X if was_df else pd.DataFrame(np.asarray(X), index=idx)
+        if X_df.shape[1] != self.n_features_in_:
+            raise ValueError(
+                f"X has {X_df.shape[1]} features, but {type(self).__name__} "
+                f"is expecting {self.n_features_in_} features as input."
+            )
+        if (
+            was_df
+            and getattr(self, "_fitted_on_frame_", False)
+            and not np.array_equal(
+                np.asarray(X.columns, dtype=object), self.feature_names_in_
+            )
+        ):
+            raise ValueError(
+                "The feature names should match those that were passed during "
+                "fit, in the same order."
+            )
         batch_vec = _subset(self.batch, idx)
         if isinstance(batch_vec, pd.DataFrame):
             batch_vec = batch_vec.iloc[:, 0]
         batch_ser = pd.Series(batch_vec, index=idx)
+        _check_label_values(batch_ser, "batch")
         return X_df, batch_ser.to_numpy(), idx, was_df
 
     def _fit_impl(

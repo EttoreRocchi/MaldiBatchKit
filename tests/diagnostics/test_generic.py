@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
-from maldibatchkit.diagnostics import kbet, lisi, silhouette_batch
+from maldibatchkit.diagnostics import kbet, lisi, lisi_normalized, silhouette_batch
 
 
 def test_silhouette_single_batch_returns_zero(tiny_dataset):
@@ -17,7 +18,7 @@ def test_silhouette_detects_strong_effect(big_dataset):
     X, batch = big_dataset["X"], big_dataset["batch"]
     s = silhouette_batch(X, batch)
     assert -1.0 <= s <= 1.0
-    assert s > 0.0  # synthetic shift should show batch clustering
+    assert s > 0.0
 
 
 def test_silhouette_ndarray(big_dataset):
@@ -52,3 +53,11 @@ def test_lisi_within_expected_range(big_dataset):
     X, batch = big_dataset["X"], big_dataset["batch"]
     value = lisi(X, batch)
     assert 1.0 <= value <= len(batch.unique())
+
+
+def test_lisi_normalized_is_at_most_one():
+    b = np.array(["a"] * 50 + ["b"] * 10)
+    for seed in range(10):
+        X = np.random.default_rng(seed).standard_normal((60, 4))
+        X[b == "b"] *= 0.3
+        assert lisi_normalized(X, b, perplexity=10) <= 1.0

@@ -13,6 +13,23 @@ from maldibatchkit import Harmony
 harmonypy_available = importlib.util.find_spec("harmonypy") is not None
 
 
+def _make_shared_species_dataset(rng, *, n_per_batch=60, n_features=50):
+    """Two batches (unit shift per feature) sharing three species clusters."""
+    n = 2 * n_per_batch
+    idx = [f"s{i:03d}" for i in range(n)]
+    batch = pd.Series(["b0"] * n_per_batch + ["b1"] * n_per_batch, index=idx)
+    species = np.tile(np.arange(n_per_batch) % 3, 2)
+    centers = 2.0 * rng.standard_normal((3, n_features))
+    X = rng.standard_normal((n, n_features)) + centers[species]
+    X[batch.to_numpy() == "b1"] += 1.0
+    return pd.DataFrame(X, index=idx), batch
+
+
+def _batch_mean_gap(X, batch):
+    b = batch.loc[X.index]
+    return float(np.linalg.norm(X[b == "b1"].mean() - X[b == "b0"].mean()))
+
+
 @pytest.mark.skipif(not harmonypy_available, reason="harmonypy not installed")
 def test_harmony_fit_transform_returns_dataframe(big_dataset):
     X, batch = big_dataset["X"], big_dataset["batch"]
@@ -30,7 +47,6 @@ def test_harmony_same_matrix_fast_path_matches_upstream(big_dataset):
     out1 = corrector.transform(X)
     out2 = corrector.transform(X)
     np.testing.assert_allclose(out1.to_numpy(), out2.to_numpy())
-    # Cached result equals the stored harmonypy Z_corr
     np.testing.assert_allclose(out1.to_numpy(), corrector._corrected_cache_)
 
 
@@ -38,7 +54,6 @@ def test_harmony_same_matrix_fast_path_matches_upstream(big_dataset):
 def test_harmony_transforms_unseen_rows(big_dataset):
     """Closed-form transform works on rows not seen at fit time."""
     X, batch = big_dataset["X"], big_dataset["batch"]
-    # Stratified split so every batch is in both folds
     train_idx, test_idx = [], []
     for lvl in batch.unique():
         lvl_ids = batch[batch == lvl].index.tolist()
@@ -56,13 +71,11 @@ def test_harmony_transforms_unseen_rows(big_dataset):
 @pytest.mark.skipif(not harmonypy_available, reason="harmonypy not installed")
 def test_harmony_rejects_unseen_batch(big_dataset):
     X, batch = big_dataset["X"], big_dataset["batch"]
-    # Use only two of the three batches for fit
     seen = batch.unique()[:2]
     train_mask = batch.isin(seen)
     X_tr = X.loc[train_mask]
     corrector = Harmony(batch=batch, max_iter=3, random_state=0, nclust=3).fit(X_tr)
 
-    # Transform on a subset containing the third batch -> must raise
     X_te = X.loc[~train_mask]
     corrector.batch = batch.loc[X_te.index]
     with pytest.raises(ValueError, match="Unseen batch level"):
@@ -115,10 +128,7 @@ def test_harmony_covariates_from_dataframe(big_dataset):
         nclust=3,
     ).fit(X)
     assert corrector.Y_.shape[1] == corrector.n_clusters_
-    # harmonypy's batch indicator Phi encodes batch|site|sp, so
-    # W_batch_'s B dimension equals the number of *batch* levels only.
     assert corrector.W_batch_.shape[1] == len(corrector.batch_levels_)
-    # Correction applied, result finite
     assert np.isfinite(corrector.transform(X).to_numpy()).all()
 
 
@@ -126,10 +136,71 @@ def test_harmony_covariates_from_dataframe(big_dataset):
 def test_harmony_exposes_fitted_attributes(big_dataset):
     X, batch = big_dataset["X"], big_dataset["batch"]
     corrector = Harmony(batch=batch, max_iter=3, random_state=0, nclust=4).fit(X)
-    # Shapes per the docstring
     assert corrector.Y_.shape[1] == corrector.n_clusters_
     assert corrector.sigma_.shape == (corrector.n_clusters_,)
     K, B, d = corrector.W_batch_.shape
     assert K == corrector.n_clusters_
     assert B == len(corrector.batch_levels_)
     assert d == X.shape[1]
+
+
+@pytest.mark.skipif(not harmonypy_available, reason="harmonypy not installed")
+@pytest.mark.parametrize("order", ["sorted", "reversed"])
+def test_harmony_transform_independent_of_training_row_order(rng, order):
+    """Closed-form transform applies each batch's own correction to new rows."""
+    X, batch = _make_shared_species_dataset(rng)
+    train, test = X.index[::2], X.index[1::2]
+    if order == "reversed":
+        train = train[::-1]
+    corrector = Harmony(batch=batch, random_state=0, verbose=False).fit(X.loc[train])
+    before = _batch_mean_gap(X.loc[test], batch)
+    after = _batch_mean_gap(corrector.transform(X.loc[test]), batch)
+    assert after < 0.5 * before
+
+
+@pytest.mark.skipif(not harmonypy_available, reason="harmonypy not installed")
+def test_harmony_small_sample_clamps_default_nclust(rng):
+    X, batch = _make_shared_species_dataset(rng, n_per_batch=10)
+    corrector = Harmony(batch=batch, random_state=0, verbose=False).fit(X)
+    assert corrector.n_clusters_ == 2
+    assert np.isfinite(corrector.transform(X).to_numpy()).all()
+
+
+@pytest.mark.skipif(not harmonypy_available, reason="harmonypy not installed")
+def test_harmony_rejects_nclust_below_two(rng):
+    X, batch = _make_shared_species_dataset(rng, n_per_batch=10)
+    with pytest.raises(ValueError, match="nclust"):
+        Harmony(batch=batch, nclust=1, verbose=False).fit(X)
+
+
+@pytest.mark.skipif(not harmonypy_available, reason="harmonypy not installed")
+def test_harmony_forwards_random_state(monkeypatch, big_dataset):
+    import harmonypy
+
+    seeds = []
+    run_harmony = harmonypy.run_harmony
+
+    def spy(*args, **kwargs):
+        seeds.append(kwargs.get("random_state"))
+        return run_harmony(*args, **kwargs)
+
+    monkeypatch.setattr(harmonypy, "run_harmony", spy)
+    X, batch = big_dataset["X"], big_dataset["batch"]
+    for random_state in (7, None, None):
+        Harmony(
+            batch=batch, random_state=random_state, max_iter=3, nclust=3, verbose=False
+        ).fit(X)
+    assert seeds[0] == 7
+    assert seeds[1] != seeds[2]
+
+
+@pytest.mark.skipif(not harmonypy_available, reason="harmonypy not installed")
+def test_harmony_cache_not_stale_after_in_place_edit(big_dataset):
+    X, batch = big_dataset["X"].copy(), big_dataset["batch"]
+    corrector = Harmony(
+        batch=batch, max_iter=3, random_state=0, nclust=3, verbose=False
+    ).fit(X)
+    X.iloc[0, 0] += 100.0
+    out = corrector.transform(X)
+    closed_form = corrector.transform(X.iloc[:-1])
+    np.testing.assert_allclose(out.iloc[0].to_numpy(), closed_form.iloc[0].to_numpy())

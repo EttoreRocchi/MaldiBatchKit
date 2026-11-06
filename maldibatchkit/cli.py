@@ -27,7 +27,7 @@ a given corrector.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -53,6 +53,7 @@ from . import (
 )
 from ._cli_io import (
     load_dataframe_csv,
+    load_features,
     load_labels_csv,
     load_matrix,
     load_mz_csv,
@@ -91,6 +92,19 @@ BatchOpt = Annotated[
 ]
 
 
+def _as_batch_level(reference_batch: str | None, batch: pd.Series) -> Any:
+    """Return the batch level whose string form is ``reference_batch``."""
+    if reference_batch is None:
+        return None
+    for level in pd.unique(batch):
+        if str(level) == reference_batch:
+            return level
+    raise typer.BadParameter(
+        f"--reference-batch {reference_batch!r} is not a batch level; "
+        f"levels: {sorted(str(lvl) for lvl in pd.unique(batch))}."
+    )
+
+
 def _run_and_save(
     transformer, X: pd.DataFrame, output: Path, batch: pd.Series, extras: dict
 ) -> None:
@@ -100,6 +114,14 @@ def _run_and_save(
         X_corrected = pd.DataFrame(
             np.asarray(X_corrected), index=X.index, columns=X.columns
         )
+    bad_rows = ~np.isfinite(X_corrected.to_numpy(dtype=float)).all(axis=1)
+    if bad_rows.any():
+        typer.echo(
+            f"error: the correction produced non-finite values in "
+            f"{int(bad_rows.sum())} sample(s); {output} was not written.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     save_matrix(X_corrected, output, batch=batch, extras=extras)
     typer.echo(f"wrote {output} ({X_corrected.shape[0]} x {X_corrected.shape[1]})")
 
@@ -109,7 +131,11 @@ def _load_covariates(
     continuous_csv: Path | None,
     index: pd.Index,
 ) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
-    discrete = load_dataframe_csv(discrete_csv, index) if discrete_csv else None
+    discrete = (
+        load_dataframe_csv(discrete_csv, index, categorical=True)
+        if discrete_csv
+        else None
+    )
     continuous = load_dataframe_csv(continuous_csv, index) if continuous_csv else None
     return discrete, continuous
 
@@ -138,7 +164,7 @@ def correct_combat(
         method="johnson",
         parametric=parametric,
         mean_only=mean_only,
-        reference_batch=reference_batch,
+        reference_batch=_as_batch_level(reference_batch, batch),
         eps=eps,
     )
     _run_and_save(transformer, X, output, batch, extras)
@@ -188,7 +214,7 @@ def correct_combat_fortin(
         method="fortin",
         parametric=parametric,
         mean_only=mean_only,
-        reference_batch=reference_batch,
+        reference_batch=_as_batch_level(reference_batch, batch),
         eps=eps,
     )
     _run_and_save(transformer, X, output, batch, extras)
@@ -225,9 +251,13 @@ def correct_combat_chen(
         method="chen",
         parametric=parametric,
         mean_only=mean_only,
-        reference_batch=reference_batch,
+        reference_batch=_as_batch_level(reference_batch, batch),
         eps=eps,
-        covbat_cov_thresh=covbat_cov_thresh,
+        covbat_cov_thresh=(
+            int(covbat_cov_thresh)
+            if covbat_cov_thresh > 1 and float(covbat_cov_thresh).is_integer()
+            else covbat_cov_thresh
+        ),
     )
     _run_and_save(transformer, X, output, batch, extras)
 
@@ -267,7 +297,7 @@ def correct_species_combat(
         continuous_covariates=continuous,
         parametric=parametric,
         mean_only=mean_only,
-        reference_batch=reference_batch,
+        reference_batch=_as_batch_level(reference_batch, batch),
         eps=eps,
     )
     _run_and_save(transformer, X, output, batch, extras)
@@ -301,7 +331,7 @@ def correct_quality_combat(
         batch=batch,
         quality=quality,
         parametric=parametric,
-        reference_batch=reference_batch,
+        reference_batch=_as_batch_level(reference_batch, batch),
         eps=eps,
         max_iter=max_iter,
         tol=tol,
@@ -346,16 +376,28 @@ def correct_harmony(
     ] = None,
     theta: Annotated[float, typer.Option(help="Diversity clustering penalty.")] = 2.0,
     max_iter: Annotated[int, typer.Option(help="Harmony iterations.")] = 20,
+    nclust: Annotated[
+        Optional[int],
+        typer.Option(
+            help="Number of Harmony clusters (>= 2). Default: harmonypy's "
+            "heuristic round(N/30), clamped to at least 2."
+        ),
+    ] = None,
     random_state: Annotated[Optional[int], typer.Option()] = None,
 ) -> None:
     """Harmony (Korsunsky 2019) via harmonypy. Train/test safe via closed-form transform."""
     X, batch, extras = load_matrix(input, batch_csv)
-    covariates = load_dataframe_csv(covariates_csv, X.index) if covariates_csv else None
+    covariates = (
+        load_dataframe_csv(covariates_csv, X.index, categorical=True)
+        if covariates_csv
+        else None
+    )
     transformer = Harmony(
         batch=batch,
         covariates=covariates,
         theta=theta,
         max_iter=max_iter,
+        nclust=nclust,
         random_state=random_state,
     )
     _run_and_save(transformer, X, output, batch, extras)
@@ -403,7 +445,7 @@ def correct_reference_scaling(
     """Multiplicative per-batch scaling to a reference."""
     X, batch, extras = load_matrix(input, batch_csv)
     transformer = ReferenceScaling(
-        batch=batch, reference_batch=reference_batch, eps=eps
+        batch=batch, reference_batch=_as_batch_level(reference_batch, batch), eps=eps
     )
     _run_and_save(transformer, X, output, batch, extras)
 
@@ -442,6 +484,22 @@ def correct_warping(
     _run_and_save(transformer, X, output, batch, extras)
 
 
+def _align_to_input(
+    after: pd.DataFrame, before: pd.DataFrame, *, source: Path
+) -> pd.DataFrame:
+    """Reindex ``after`` onto the sample IDs and features of ``before``."""
+    for axis, what in ((0, "sample IDs"), (1, "feature names")):
+        if set(after.axes[axis].astype(str)) != set(before.axes[axis].astype(str)):
+            raise typer.BadParameter(f"{source}: its {what} differ from --input.")
+    out = after.set_axis(after.index.astype(str), axis=0).set_axis(
+        after.columns.astype(str), axis=1
+    )
+    out = out.reindex(
+        index=before.index.astype(str), columns=before.columns.astype(str)
+    )
+    return out.set_axis(before.index, axis=0).set_axis(before.columns, axis=1)
+
+
 @app.command("diagnose")
 def diagnose(
     input: InputOpt,
@@ -475,7 +533,7 @@ def diagnose(
     """Run the full diagnostic report and write a tidy CSV."""
     before, batch, _ = load_matrix(input, batch_csv)
     if corrected is not None:
-        after, _, _ = load_matrix(corrected, batch_csv)
+        after = _align_to_input(load_features(corrected), before, source=corrected)
     else:
         after = before.copy()
     mz_values = load_mz_csv(mz_csv, before.shape[1]) if mz_csv else None

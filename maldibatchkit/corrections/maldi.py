@@ -143,7 +143,7 @@ class BatchAwareWarping(BaseBatchCorrector):
     def _fit_warper_on(self, df: pd.DataFrame, reference: np.ndarray):
         w = self._make_warper()
         w.fit(df)
-        w.ref_spec_ = reference  # swap in the shared global reference
+        w.ref_spec_ = reference
         return w
 
     def _fit_impl(self, X_df: pd.DataFrame, batch: npt.NDArray[Any]) -> None:

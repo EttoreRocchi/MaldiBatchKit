@@ -50,14 +50,13 @@ def test_resolve_mz_from_float_columns():
 
 
 def test_resolve_mz_rangeindex_is_bin_index():
-    df = pd.DataFrame(np.zeros((3, 4)))  # RangeIndex(0, 4)
+    df = pd.DataFrame(np.zeros((3, 4)))
     mz, is_real = _resolve_mz_axis(df, None)
     assert not is_real
     np.testing.assert_array_equal(mz, [0.0, 1.0, 2.0, 3.0])
 
 
 def test_resolve_mz_zero_to_n_minus_one_is_bin_index():
-    # An explicit Int64Index [0, 1, 2, 3] should also be treated as positional.
     df = pd.DataFrame(np.zeros((3, 4)), columns=pd.Index([0, 1, 2, 3]))
     mz, is_real = _resolve_mz_axis(df, None)
     assert not is_real
@@ -84,7 +83,6 @@ def test_plot_peak_shift_auto_reads_maldiset_columns():
     X, batch = _tiny_df(rng)
     _, ax = plot_peak_shift(batch, X)
     assert ax.get_xlabel() == "m/z"
-    # x-data of the first line (the reference) should match the float-cast columns.
     np.testing.assert_array_equal(
         ax.lines[0].get_xdata(),
         np.asarray([float(c) for c in X.columns]),
@@ -108,11 +106,24 @@ def test_plot_peak_shift_explicit_overrides_auto():
 
 
 def test_peak_position_drift_auto_reads_maldiset_columns():
-    # Inject a known peak in column 3 (m/z 2009) so deltas are computed in Da.
     rng = np.random.default_rng(0)
     X, batch = _tiny_df(rng)
     X.iloc[:, 3] += 10
     out = peak_position_drift(X, batch, top_k=1)
-    # Deltas should be in Da (spacing = 3), not in bin counts (spacing = 1).
     max_abs = out["max_abs_delta_mz"].abs().max()
     assert max_abs == 0.0 or max_abs % 3 == 0
+
+
+@pytest.mark.parametrize(
+    "mz, match",
+    [
+        (5.0, "1-D"),
+        (np.zeros((4, 1)), "1-D"),
+        (np.array([1.0, np.nan, 3.0, 4.0]), "finite"),
+    ],
+    ids=["scalar", "2d", "nan"],
+)
+def test_resolve_mz_rejects_invalid_values(mz, match):
+    df = pd.DataFrame(np.zeros((3, 4)))
+    with pytest.raises(ValueError, match=match):
+        _resolve_mz_axis(df, mz)

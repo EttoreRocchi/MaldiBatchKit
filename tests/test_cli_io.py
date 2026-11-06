@@ -42,7 +42,6 @@ def test_load_matrix_csv_with_batch_csv(tiny_df):
     X.to_csv(p)
     batch.to_frame("batch").to_csv(bp)
     X_loaded, batch_loaded, extras = load_matrix(p, bp)
-    # CSV round-trip turns integer column labels into strings; check values + shape.
     np.testing.assert_allclose(X_loaded.to_numpy(), X.to_numpy())
     assert list(X_loaded.index) == list(X.index)
     assert list(batch_loaded) == list(batch)
@@ -104,12 +103,11 @@ def test_load_labels_csv_rejects_multi_column(tmp_path):
         load_labels_csv(p, pd.Index(["a", "b"]))
 
 
-def test_load_labels_csv_positional_fallback(tmp_path):
+def test_load_labels_csv_unmatched_ids_raise(tmp_path):
     p = tmp_path / "labels.csv"
-    # Index doesn't match X.index but row count does -> positional align
     pd.DataFrame({"x": [1, 2, 3]}, index=["X", "Y", "Z"]).to_csv(p)
-    out = load_labels_csv(p, pd.Index(["a", "b", "c"]))
-    assert list(out.index) == ["a", "b", "c"]
+    with pytest.raises(typer.BadParameter, match=r"missing.*'a', 'b', 'c'"):
+        load_labels_csv(p, pd.Index(["a", "b", "c"]))
 
 
 def test_load_labels_csv_row_count_mismatch(tmp_path):
@@ -172,7 +170,6 @@ def test_save_matrix_npz_with_batch_and_extras(tmp_path):
 def test_save_matrix_npz_ignores_conflicting_extras(tmp_path):
     df = pd.DataFrame(np.arange(6).reshape(2, 3), index=["a", "b"])
     p = tmp_path / "out.npz"
-    # "X" in extras would clobber the real X; save_matrix must skip it
     save_matrix(df, p, extras={"X": np.zeros(999)})
     with np.load(p, allow_pickle=True) as npz:
         assert np.asarray(npz["X"]).shape == df.shape
@@ -206,11 +203,11 @@ def test_align_frame_reindex_superset(tmp_path):
     assert out.shape == (2, 1)
 
 
-def test_align_frame_positional_fallback(tmp_path):
+def test_align_frame_unmatched_ids_raise(tmp_path):
     idx = pd.Index(["a", "b"])
     df = pd.DataFrame({"x": [1, 2]}, index=["Z", "Y"])
-    out = _align_frame(df, idx, source=tmp_path / "x.csv")
-    assert list(out.index) == ["a", "b"]
+    with pytest.raises(typer.BadParameter, match="missing"):
+        _align_frame(df, idx, source=tmp_path / "x.csv")
 
 
 def test_align_frame_row_count_mismatch_raises(tmp_path):
@@ -233,3 +230,43 @@ def test_load_matrix_npz_without_batch_uses_sidecar(tmp_path, tiny_df):
     batch.to_frame("batch").to_csv(bp)
     X_loaded, batch_loaded, _ = load_matrix(npz, bp)
     assert list(batch_loaded) == list(batch)
+
+
+def test_load_matrix_csv_keeps_ids_and_labels_as_strings(tmp_path):
+    ids = ["001", "002", "003", "004"]
+    X = pd.DataFrame(np.arange(8.0).reshape(4, 2), index=pd.Index(ids, name="id"))
+    p, bp = tmp_path / "X.csv", tmp_path / "batch.csv"
+    X.to_csv(p)
+    pd.DataFrame({"batch": ["NA", "NA", "002", "002"]}, index=X.index).to_csv(bp)
+    X_loaded, batch, _ = load_matrix(p, bp)
+    assert list(X_loaded.index) == ids
+    assert list(batch) == ["NA", "NA", "002", "002"]
+
+
+def test_load_matrix_npz_integer_index_matches_csv_ids(tmp_path):
+    p, bp = tmp_path / "X.npz", tmp_path / "batch.csv"
+    np.savez(p, X=np.zeros((4, 2)), index=np.arange(4))
+    pd.DataFrame({"batch": ["a", "b", "b", "a"]}, index=[3, 2, 1, 0]).to_csv(bp)
+    _, batch, _ = load_matrix(p, bp)
+    assert list(batch) == ["a", "b", "b", "a"][::-1]
+
+
+def test_load_labels_csv_rejects_headerless_file(tmp_path):
+    p = tmp_path / "labels.csv"
+    p.write_text("s0,a\ns1,b\ns2,a\n")
+    with pytest.raises(typer.BadParameter, match="header"):
+        load_labels_csv(p, pd.Index(["s0", "s1", "s2"]))
+
+
+def test_load_labels_csv_rejects_duplicated_ids(tmp_path):
+    p = tmp_path / "labels.csv"
+    p.write_text("id,batch\ns0,a\ns0,b\ns1,a\n")
+    with pytest.raises(typer.BadParameter, match="duplicated"):
+        load_labels_csv(p, pd.Index(["s0", "s1"]))
+
+
+def test_load_dataframe_csv_categorical_keeps_labels_as_strings(tmp_path):
+    p = tmp_path / "species.csv"
+    p.write_text("id,species\ns0,NA\ns1,001\n")
+    out = load_dataframe_csv(p, pd.Index(["s0", "s1"]), categorical=True)
+    assert out["species"].tolist() == ["NA", "001"]

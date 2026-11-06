@@ -108,6 +108,8 @@ class Limma(BaseBatchCorrector):
     >>> X_corrected = corrector.fit_transform(X)
     """
 
+    _sample_aligned_params = ("batch", "design")
+
     def __init__(
         self,
         batch: ArrayLike,
@@ -130,6 +132,8 @@ class Limma(BaseBatchCorrector):
         )
         if arr.ndim == 1:
             arr = arr.reshape(-1, 1)
+        if not np.isfinite(arr).all():
+            raise ValueError("design must contain only finite values (no NaN or inf).")
         return arr
 
     def _fit_impl(self, X_df: pd.DataFrame, batch: npt.NDArray[Any]) -> None:
@@ -147,13 +151,11 @@ class Limma(BaseBatchCorrector):
             full_design = np.hstack([intercept, batch_design])
             n_before = 1
 
-        # Tikhonov-regularised normal equations
         gram = full_design.T @ full_design
         gram += self.eps * np.eye(gram.shape[0])
         rhs = full_design.T @ X_df.to_numpy(dtype=float)
         beta = la.solve(gram, rhs)
 
-        # Batch coefficients live in the last n_contrasts rows
         self.gamma_ = beta[n_before:, :]
 
     def _transform_impl(

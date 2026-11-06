@@ -60,7 +60,6 @@ def test_resolve_weights_balanced_smallest_batch_loudest():
     levels = np.array(["small", "big"])
     sizes = np.array([10, 100])
     w = _resolve_weights(levels, sizes, "balanced")
-    # The smaller batch must get a strictly larger weight.
     assert w[0] > w[1]
 
 
@@ -142,7 +141,6 @@ def test_roc_auc_size_weights_differ_from_uniform_for_unequal_batches(labelled_d
 
 def test_roc_auc_custom_dict_weights(labelled_dataset):
     d = labelled_dataset
-    # All mass on batch 'a' must equal AUROC on batch 'a' alone.
     only_a = batch_roc_auc_score(
         d["y"], d["score"], batch=d["batch"], weights={"a": 1.0, "b": 0.0}
     )
@@ -154,7 +152,6 @@ def test_roc_auc_custom_dict_weights(labelled_dataset):
 def test_roc_auc_drops_single_class_batch_with_warning(labelled_dataset):
     d = labelled_dataset
     y = d["y"].copy()
-    # Force batch 'a' to one class only -> AUROC undefined for that batch.
     y[d["batch"] == "a"] = 1
     with warnings.catch_warnings(record=True) as wlog:
         warnings.simplefilter("always")
@@ -323,5 +320,59 @@ def test_scorer_inside_gridsearchcv_picks_better_corrector(rng):
         warnings.simplefilter("ignore")
         grid.fit(X, y)
     assert grid.best_params_["correct__method"] in {"noop", "median", "combat-fortin"}
-    # cv_results_ should hold finite scores.
     assert np.isfinite(grid.cv_results_["mean_test_score"]).all()
+
+
+def test_scorer_rejects_fold_without_index(labelled_dataset):
+    d = labelled_dataset
+    scorer = make_batch_scorer(d["batch"], "roc_auc")
+    fold = d["batch"].index[-30:]
+    est = _DummyProbaEstimator(d["score"].loc[fold])
+    with pytest.raises(ValueError, match="no index"):
+        scorer(
+            est, d["score"].loc[fold].to_frame().to_numpy(), d["y"].loc[fold].to_numpy()
+        )
+
+
+def test_scorer_rejects_ndarray_batch_on_indexed_subset(labelled_dataset):
+    d = labelled_dataset
+    rng = np.random.default_rng(0)
+    perm = rng.permutation(len(d["y"]))
+    y = pd.Series(d["y"].to_numpy()[perm], index=perm)
+    score = pd.Series(d["score"].to_numpy()[perm], index=perm)
+    scorer = make_batch_scorer(d["batch"].to_numpy()[perm], "roc_auc")
+    fold = y.index[:40]
+    with pytest.raises(ValueError, match="pandas Series"):
+        scorer(
+            _DummyProbaEstimator(score.loc[fold]),
+            score.loc[fold].to_frame(),
+            y.loc[fold],
+        )
+
+
+def test_scorer_full_length_positional_still_works(labelled_dataset):
+    d = labelled_dataset
+    scorer = make_batch_scorer(d["batch"].to_numpy(), "roc_auc")
+    expected = batch_roc_auc_score(d["y"], d["score"], batch=d["batch"])
+    got = scorer(
+        _DummyProbaEstimator(d["score"]),
+        d["score"].to_frame().to_numpy(),
+        d["y"].to_numpy(),
+    )
+    assert got == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "fn",
+    [batch_f1_score, batch_precision_score, batch_recall_score],
+    ids=["f1", "precision", "recall"],
+)
+def test_single_class_batch_dropped_for_f1_precision_recall(fn):
+    idx = [f"s{i}" for i in range(20)]
+    batch = pd.Series(["a"] * 10 + ["b"] * 10, index=idx)
+    y = pd.Series([0] * 10 + [0, 1] * 5, index=idx)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        with pytest.warns(UserWarning, match="dropped"):
+            v = fn(y, y.copy(), batch=batch)
+    assert v == pytest.approx(1.0)

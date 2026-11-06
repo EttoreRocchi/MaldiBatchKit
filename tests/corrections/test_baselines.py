@@ -16,7 +16,6 @@ def test_median_centering_zeroes_per_batch_medians(tiny_dataset):
     out = corrector.transform(X)
     assert isinstance(out, pd.DataFrame)
     assert out.shape == X.shape
-    # Per-batch medians should be near zero after centering
     for lvl in batch.unique():
         mask = (batch == lvl).to_numpy()
         per_batch_median = out.loc[mask].median(axis=0).to_numpy()
@@ -25,8 +24,6 @@ def test_median_centering_zeroes_per_batch_medians(tiny_dataset):
 
 def test_median_centering_ndarray_input_returns_ndarray(tiny_dataset):
     X, batch = tiny_dataset["X"], tiny_dataset["batch"]
-    # Pass batch as a bare ndarray so the corrector does positional alignment
-    # against the default RangeIndex of the ndarray input.
     corrector = MedianCentering(batch=batch.to_numpy()).fit(X.to_numpy())
     out = corrector.transform(X.to_numpy())
     assert isinstance(out, np.ndarray)
@@ -36,7 +33,6 @@ def test_median_centering_ndarray_input_returns_ndarray(tiny_dataset):
 def test_median_centering_falls_back_on_unknown_batch(tiny_dataset, rng):
     X, batch = tiny_dataset["X"], tiny_dataset["batch"]
     corrector = MedianCentering(batch=batch).fit(X)
-    # Pretend new samples arrive with a never-seen batch label
     X_new = X.iloc[:5].copy()
     batch_new = pd.Series(["new_batch"] * 5, index=X_new.index)
     corrector.batch = batch_new
@@ -64,14 +60,12 @@ def test_zscore_handles_unknown_batch(tiny_dataset):
     batch_new = pd.Series(["new"] * 5, index=X_new.index)
     corrector.batch = batch_new
     out = corrector.transform(X_new)
-    # Output should use grand stats and have shape matching X_new
     assert out.shape == X_new.shape
 
 
 def test_reference_scaling_chooses_largest_batch_as_reference(tiny_dataset):
     X, batch = tiny_dataset["X"], tiny_dataset["batch"]
     corrector = ReferenceScaling(batch=batch).fit(X)
-    # Both tiny batches are same size -> first alphabetical level wins.
     assert corrector.reference_batch_ in set(batch.unique())
     out = corrector.transform(X)
     assert out.shape == X.shape
@@ -99,10 +93,32 @@ def test_transform_without_fit_raises(tiny_dataset):
 
 
 def test_zscore_eps_floor(rng):
-    # Constant feature -> std is 0 pre-floor; eps must kick in without /0 crash
     idx = [f"s{i}" for i in range(10)]
     X = pd.DataFrame(np.column_stack([np.ones(10), rng.standard_normal(10)]), index=idx)
     batch = pd.Series(["a"] * 5 + ["b"] * 5, index=idx)
-    corrector = ZScorePerBatch(batch=batch).fit(X)
+    with pytest.warns(UserWarning, match="left unscaled"):
+        corrector = ZScorePerBatch(batch=batch).fit(X)
     out = corrector.transform(X)
     assert np.isfinite(out.to_numpy()).all()
+
+
+def _zero_bin_dataset(rng):
+    """Bin 0 is all zero in training batch ``b`` (common in binned MALDI)."""
+    idx = [f"s{i}" for i in range(40)]
+    batch = pd.Series(["a"] * 20 + ["b"] * 20, index=idx)
+    X = pd.DataFrame(np.abs(rng.standard_normal((40, 3))) + 1.0, index=idx)
+    X.loc[(batch == "b").to_numpy(), 0] = 0.0
+    X_new = pd.DataFrame([[0.01, 1.0, 1.0]], index=["new"])
+    return X, X_new, pd.concat([batch, pd.Series(["b"], index=["new"])])
+
+
+@pytest.mark.parametrize(
+    "cls, kwargs",
+    [(ZScorePerBatch, {}), (ReferenceScaling, {"reference_batch": "a"})],
+    ids=["zscore", "reference"],
+)
+def test_near_zero_training_scale_is_left_unscaled(rng, cls, kwargs):
+    X, X_new, batch = _zero_bin_dataset(rng)
+    with pytest.warns(UserWarning, match="left unscaled"):
+        corrector = cls(batch=batch, **kwargs).fit(X)
+    assert corrector.transform(X_new).iloc[0, 0] == pytest.approx(0.01)

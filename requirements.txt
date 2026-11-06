@@ -6,7 +6,7 @@ scikit-learn>=1.6.0
 matplotlib>=3.4.0
 
 # ComBat variants (Johnson, Fortin, Chen/CovBat)
-combatlearn>=2.0.0
+combatlearn>=2.4.0
 
 # Harmony
 # Range-pinned: MaldiBatchKit's Harmony transform reaches into

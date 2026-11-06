@@ -10,11 +10,20 @@ biological covariate.
 
 from __future__ import annotations
 
+import inspect
+from typing import Any
+
 from combatlearn import ComBat
 
-from .._utils import ArrayLike
+from .._utils import ArrayLike, _check_min_batch_size, _ensure_index, _subset
 
 __all__ = ["ComBat", "SpeciesAwareComBat"]
+
+_COMBAT_DEFAULTS = {
+    name: p.default
+    for name, p in inspect.signature(ComBat.__init__).parameters.items()
+    if p.default is not inspect.Parameter.empty
+}
 
 
 class SpeciesAwareComBat(ComBat):
@@ -49,9 +58,11 @@ class SpeciesAwareComBat(ComBat):
     -----
     This class is deliberately minimal - it is **not** a new algorithm.
     Calling ``SpeciesAwareComBat(batch=b, species=s).fit_transform(X)`` is
-    exactly equivalent to::
+    equivalent to::
 
         ComBat(batch=b, discrete_covariates=s, method='fortin').fit_transform(X)
+
+    except that a batch with fewer than 2 samples raises ``ValueError``.
 
     Examples
     --------
@@ -59,6 +70,8 @@ class SpeciesAwareComBat(ComBat):
     >>> corrector = SpeciesAwareComBat(batch=batches, species=species)
     >>> X_corrected = corrector.fit_transform(X)
     """
+
+    method = "fortin"
 
     def __init__(
         self,
@@ -71,14 +84,44 @@ class SpeciesAwareComBat(ComBat):
         reference_batch: str | None = None,
         eps: float = 1e-8,
     ) -> None:
-        super().__init__(
-            batch=batch,
-            discrete_covariates=species,
-            continuous_covariates=continuous_covariates,
-            method="fortin",
-            parametric=parametric,
-            mean_only=mean_only,
-            reference_batch=reference_batch,
-            eps=eps,
-        )
+        self.batch = batch
         self.species = species
+        self.continuous_covariates = continuous_covariates
+        self.parametric = parametric
+        self.mean_only = mean_only
+        self.reference_batch = reference_batch
+        self.eps = eps
+
+    @property
+    def discrete_covariates(self) -> ArrayLike:
+        """``species``, in the covariate slot combatlearn reads at fit."""
+        return self.species
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return _COMBAT_DEFAULTS[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def fit(self, X: ArrayLike, y: ArrayLike | None = None) -> SpeciesAwareComBat:
+        """Fit ComBat-Fortin with ``species`` as the protected covariate.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training features.
+        y : None
+            Ignored. Present for sklearn API compatibility.
+
+        Returns
+        -------
+        self : SpeciesAwareComBat
+            Fitted estimator.
+
+        Raises
+        ------
+        ValueError
+            If a batch has fewer than 2 samples.
+        """
+        _check_min_batch_size(_subset(self.batch, _ensure_index(X)))
+        return super().fit(X, y)

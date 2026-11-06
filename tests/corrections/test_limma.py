@@ -28,7 +28,6 @@ def test_limma_with_design_preserves_covariate(tiny_dataset):
     corrector = Limma(batch=batch, design=species_dummy).fit(X)
     out = corrector.transform(X)
     assert out.shape == X.shape
-    # The gamma_ should have shape (n_contrasts, n_features) with n_batches-1 rows
     assert corrector.gamma_.shape == (len(batch.unique()) - 1, X.shape[1])
 
 
@@ -47,3 +46,15 @@ def test_limma_array_design(big_dataset):
     corrector = Limma(batch=batch, design=design).fit(X)
     out = corrector.transform(X)
     assert out.shape == X.shape
+
+
+def test_limma_rejects_non_finite_design(tiny_dataset):
+    X, batch, species = (
+        tiny_dataset["X"],
+        tiny_dataset["batch"],
+        tiny_dataset["species"],
+    )
+    design = pd.get_dummies(species, drop_first=True).astype(float)
+    design.iloc[2, 0] = np.nan
+    with pytest.raises(ValueError, match="finite"):
+        Limma(batch=batch, design=design).fit(X)

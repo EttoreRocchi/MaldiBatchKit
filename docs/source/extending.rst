@@ -127,15 +127,21 @@ Adding Covariates
 
 If your corrector needs more than ``batch`` (for example species or a
 quality score), follow the same pattern the shipped correctors use:
-take the auxiliary vector in ``__init__``, store it on ``self``, and
-subset it inside ``_fit_impl`` / ``_transform_impl`` via
-:func:`maldibatchkit._utils._subset`:
+take the auxiliary vector in ``__init__``, store it on ``self``, list its
+name in the ``_sample_aligned_params`` class attribute, and subset it
+inside ``_fit_impl`` / ``_transform_impl`` via
+:func:`maldibatchkit._utils._subset`. ``_sample_aligned_params`` tells the
+base class which parameters hold one value per sample: when ``X`` is an
+ndarray it rejects a pandas input that could only be matched to the rows
+by position:
 
 .. code-block:: python
 
    from maldibatchkit._utils import _subset
 
    class QualityWeightedMean(BaseBatchCorrector):
+       _sample_aligned_params = ("batch", "quality")
+
        def __init__(self, batch, *, quality) -> None:
            super().__init__(batch=batch)
            self.quality = quality
@@ -172,6 +178,9 @@ for custom correctors:
 - **Trailing-underscore fitted attributes** (``self.batch_means_``, not
   ``self.means``) - required by sklearn's
   :func:`~sklearn.utils.validation.check_is_fitted`.
+- **Per-sample parameters in ``_sample_aligned_params``** (``("batch",)``
+  by default): every constructor argument with one value per sample
+  (covariates, quality, ...) must be listed there.
 - **No side effects outside ``fit``.** ``transform`` must be idempotent:
   calling it twice on the same input must return the same output.
 - **Unseen batches** at transform time should fall back to a training

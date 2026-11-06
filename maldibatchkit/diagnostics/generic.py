@@ -185,7 +185,6 @@ def lisi(
     lisi_values = np.empty(n_samples)
     for s in range(n_samples):
         d = distances[s]
-        # Binary search for beta matching target perplexity
         lo, hi = 1e-10, 1e10
         beta = 1.0
         for _ in range(50):
@@ -275,13 +274,15 @@ def lisi_normalized(
     Returns
     -------
     float
-        ``lisi(X, labels) / lisi_max(labels)``, or ``nan`` when there
-        are fewer than two unique labels (normalisation is undefined).
+        ``lisi(X, labels) / lisi_max(labels)`` capped at 1 (neighbourhoods
+        can be more balanced than the global label frequencies), or ``nan``
+        when there are fewer than two unique labels (normalisation is
+        undefined).
     """
     mx = lisi_max(labels)
     if mx <= 1.0:
         return float("nan")
-    return float(lisi(X, labels, perplexity=perplexity) / mx)
+    return float(min(lisi(X, labels, perplexity=perplexity) / mx, 1.0))
 
 
 def species_preservation(

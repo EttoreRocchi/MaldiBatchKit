@@ -61,3 +61,21 @@ def big_dataset(rng):
     return _make_dataset(
         rng, n_per_batch=40, n_batches=3, n_features=50, batch_shift=1.5
     )
+
+
+@pytest.fixture
+def shifted_peaks(rng):
+    """Batch ``ref`` (20 rows) has peaks at bins 30 / 70; ``shift`` (8 rows) at 36 / 64."""
+    bins = np.arange(100)
+
+    def spectrum(peaks):
+        return sum(np.exp(-((bins - p) ** 2) / 8.0) for p in peaks)
+
+    scales = rng.uniform(0.5, 1.5, 28)[:, None]
+    rows = np.vstack(
+        [np.tile(spectrum((30, 70)), (20, 1)), np.tile(spectrum((36, 64)), (8, 1))]
+    )
+    idx = [f"s{i}" for i in range(28)]
+    X = pd.DataFrame(rows * scales, index=idx)
+    batch = pd.Series(["ref"] * 20 + ["shift"] * 8, index=idx)
+    return X, batch

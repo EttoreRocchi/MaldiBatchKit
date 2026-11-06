@@ -19,7 +19,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from .._base import BaseBatchCorrector
-from .._utils import ArrayLike
+from .._utils import ArrayLike, _warn_unscaled
 
 __all__ = ["MedianCentering", "ReferenceScaling", "ZScorePerBatch"]
 
@@ -103,15 +103,16 @@ class ZScorePerBatch(BaseBatchCorrector):
     batch : array-like of shape (n_samples,)
         Batch labels.
     eps : float, default=1e-8
-        Floor applied to the standard deviation to avoid division by
-        zero on constant features.
+        Standard deviations ``<= eps`` (constant features, e.g. a bin that
+        is all zero in a batch) are replaced by 1, so the feature is only
+        mean-centred in that batch; a warning reports how many.
 
     Attributes
     ----------
     batch_means_ : pd.DataFrame
         Per-batch feature means.
     batch_stds_ : pd.DataFrame
-        Per-batch feature standard deviations (floored at ``eps``).
+        Per-batch feature standard deviations (``<= eps`` replaced by 1).
     grand_mean_ : pd.Series
         Feature-wise mean across all training rows.
     grand_std_ : pd.Series
@@ -130,15 +131,17 @@ class ZScorePerBatch(BaseBatchCorrector):
 
     def _fit_impl(self, X_df: pd.DataFrame, batch: npt.NDArray[Any]) -> None:
         means = _per_batch_reduce(X_df, batch, lambda df: df.mean(axis=0))
-        stds = _per_batch_reduce(
-            X_df, batch, lambda df: df.std(axis=0, ddof=0).clip(lower=self.eps)
-        )
+        stds = _per_batch_reduce(X_df, batch, lambda df: df.std(axis=0, ddof=0))
         self.batch_means_ = pd.DataFrame(means).T
-        self.batch_stds_ = pd.DataFrame(stds).T
+        batch_stds = pd.DataFrame(stds).T
+        small = batch_stds <= self.eps
+        _warn_unscaled(int(small.to_numpy().sum()), self.eps)
+        self.batch_stds_ = batch_stds.mask(small, 1.0)
         self.batch_means_.index.name = "batch"
         self.batch_stds_.index.name = "batch"
         self.grand_mean_ = X_df.mean(axis=0)
-        self.grand_std_ = X_df.std(axis=0, ddof=0).clip(lower=self.eps)
+        grand_std = X_df.std(axis=0, ddof=0)
+        self.grand_std_ = grand_std.mask(grand_std <= self.eps, 1.0)
 
     def _transform_impl(
         self, X_df: pd.DataFrame, batch: npt.NDArray[Any]
@@ -174,7 +177,9 @@ class ReferenceScaling(BaseBatchCorrector):
         Batch level to use as the reference. If ``None``, the batch with
         the most training samples is chosen.
     eps : float, default=1e-8
-        Floor on the denominator mean to avoid division by zero.
+        Batch means with ``|mean| <= eps`` (e.g. a bin that is all zero in a
+        batch) get a scale factor of 1 instead of ``reference_mean / eps``;
+        a warning reports how many.
 
     Attributes
     ----------
@@ -210,13 +215,17 @@ class ReferenceScaling(BaseBatchCorrector):
         self.reference_batch_ = ref
         ref_mean = X_df.loc[batch == ref].mean(axis=0)
         scales: dict[Any, pd.Series] = {}
+        n_small = 0
         for lvl in levels:
             if lvl == ref:
                 scales[lvl] = pd.Series(np.ones(X_df.shape[1]), index=X_df.columns)
                 continue
-            lvl_mean = X_df.loc[batch == lvl].mean(axis=0)
-            denom = np.where(np.abs(lvl_mean) < self.eps, self.eps, lvl_mean)
-            scales[lvl] = pd.Series(ref_mean.to_numpy() / denom, index=X_df.columns)
+            lvl_mean = X_df.loc[batch == lvl].mean(axis=0).to_numpy()
+            small = np.abs(lvl_mean) <= self.eps
+            n_small += int(small.sum())
+            factor = ref_mean.to_numpy() / np.where(small, 1.0, lvl_mean)
+            scales[lvl] = pd.Series(np.where(small, 1.0, factor), index=X_df.columns)
+        _warn_unscaled(n_small, self.eps)
         self.scale_factors_ = pd.DataFrame(scales).T
         self.scale_factors_.index.name = "batch"
 

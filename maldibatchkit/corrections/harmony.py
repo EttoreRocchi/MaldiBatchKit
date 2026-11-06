@@ -100,22 +100,29 @@ class Harmony(BaseBatchCorrector):
     batch : array-like of shape (n_samples,)
         Batch labels.
     covariates : array-like, optional
-        Additional categorical covariates forwarded to
+        Additional categorical variables forwarded to
         ``harmonypy.run_harmony`` via the ``vars_use`` mechanism.
+        harmonypy treats them as **nuisance** variables: they are
+        regressed out of the training rows like the batch, not
+        protected (use ComBat-Fortin or Limma to protect a covariate).
     theta : float or list of float, default=2.0
         Diversity clustering penalty in Harmony.  Higher values
         encourage more aggressive batch mixing.
     max_iter : int, default=20
         Harmony iteration cap.
     nclust : int, optional
-        Number of Harmony clusters.  When ``None``, ``harmonypy``'s
-        default heuristic is used.
+        Number of Harmony clusters (at least 2).  When ``None``,
+        ``harmonypy``'s heuristic ``min(round(N / 30), 100)`` is used,
+        clamped to 2: below 45 training samples it gives a single
+        cluster, on which ``harmonypy`` fails.
     n_components : int, optional
         Number of PCA components used for the built-in dimensionality-
         reduction stage.  ``None`` (the default) picks
         ``min(50, n_samples - 1, n_features)``.
     random_state : int, optional
-        Seed forwarded to harmonypy **and** to the PCA stage.
+        Seed forwarded to harmonypy **and** to the PCA stage.  ``None``
+        draws a fresh harmonypy seed at each ``fit`` (non-deterministic,
+        as in sklearn).
     verbose : bool, default=True
         If ``False``, suppress ``harmonypy``'s own progress messages
         during ``fit``.  ``harmonypy`` configures its module-level
@@ -137,8 +144,7 @@ class Harmony(BaseBatchCorrector):
         ``Y``, and the per-batch ridge ``W_batch``) and reused verbatim
         on unseen rows at ``transform`` time, with the corrected output
         un-scaled back to the original measurement scale.  Set to
-        ``False`` to recover the pre-v0.2 behaviour (centred but not
-        scaled before PCA).
+        ``False`` to centre but not scale before PCA.
 
     Attributes
     ----------
@@ -155,7 +161,7 @@ class Harmony(BaseBatchCorrector):
     pca_ : sklearn.decomposition.PCA
         Fitted PCA, re-used verbatim on unseen rows at transform time.
     X_fit_ : np.ndarray
-        Training feature matrix (original space) cached for
+        Copy of the training feature matrix (original space) cached for
         same-matrix short-circuiting.
     n_clusters_ : int
         Number of clusters actually used by Harmony.
@@ -176,6 +182,8 @@ class Harmony(BaseBatchCorrector):
       matches upstream byte-for-byte.
     * Unseen batch levels at transform raise ``ValueError``, mirroring
       ``ComBat`` / ``Limma``.
+    * ``harmonypy.run_harmony`` seeds the global ``numpy`` and ``torch``
+      random generators with the seed it receives.
     * Requires ``harmonypy``; it is a core dependency of
       MaldiBatchKit, range-pinned to ``>=0.2.0,<2``.  The 2.x line is
       a C++ rewrite that drops the private attributes our closed-form
@@ -189,6 +197,8 @@ class Harmony(BaseBatchCorrector):
     >>> X_train_c = corrector.fit_transform(X_train)
     >>> X_test_c  = corrector.transform(X_test)   # closed-form on new rows
     """
+
+    _sample_aligned_params = ("batch", "covariates")
 
     def __init__(
         self,
@@ -262,9 +272,9 @@ class Harmony(BaseBatchCorrector):
     def _softmax_assignment(self, X: np.ndarray) -> np.ndarray:
         """Compute the frozen-centroid soft assignment R (N, K)."""
         Z_cos = self._l2_normalise_rows(X)
-        dist = 2.0 * (1.0 - Z_cos @ self.Y_)  # (N, K)
+        dist = 2.0 * (1.0 - Z_cos @ self.Y_)
         scaled = -dist / self.sigma_[None, :]
-        scaled -= scaled.max(axis=1, keepdims=True)  # numerical stability
+        scaled -= scaled.max(axis=1, keepdims=True)
         R = np.exp(scaled)
         R = R / np.clip(R.sum(axis=1, keepdims=True), 1e-12, None)
         return R
@@ -278,65 +288,49 @@ class Harmony(BaseBatchCorrector):
         batch indicator occupies **the first** level block (rows
         ``1 : 1 + n_batches``), because ``_build_meta`` always places
         ``"batch"`` first in ``vars_use``.  Additional covariates
-        contribute further level blocks that are *protected* in the
-        training correction but are not reapplied to unseen rows at
-        transform time - the closed-form path removes batch only.
+        contribute further level blocks that harmonypy regresses out of
+        the training rows (as nuisance) but that are not reapplied to
+        unseen rows at transform time - the closed-form path removes
+        batch only.
 
         Returns an array of shape ``(K, n_batches, d)`` such that
         ``W_batch[k, b, :]`` is the per-cluster, per-batch coefficient
         subtracted for training samples that belong to batch ``b``.
         """
-        Z_orig = np.asarray(harmony_out._Z_orig.cpu().numpy(), dtype=float)  # (d, N)
-        Phi_moe = np.asarray(
-            harmony_out._Phi_moe.cpu().numpy(), dtype=float
-        )  # (rows, N)
-        R = np.asarray(harmony_out._R.cpu().numpy(), dtype=float)  # (K, N)
-        lamb = np.asarray(harmony_out._lamb.cpu().numpy(), dtype=float)  # (rows,)
+        Z_orig = np.asarray(harmony_out._Z_orig.cpu().numpy(), dtype=float)
+        Phi_moe = np.asarray(harmony_out._Phi_moe.cpu().numpy(), dtype=float)
+        R = np.asarray(harmony_out._R.cpu().numpy(), dtype=float)
+        lamb = np.asarray(harmony_out._lamb.cpu().numpy(), dtype=float)
 
         K, _ = R.shape
         d = Z_orig.shape[0]
         n_batches = int(len(batch_levels))
 
         W_batch = np.zeros((K, n_batches, d), dtype=float)
-        batch_slice = slice(1, 1 + n_batches)  # skip intercept, take batch block
+        batch_slice = slice(1, 1 + n_batches)
         for k in range(K):
-            Phi_Rk = Phi_moe * R[k]  # (rows, N)
-            cov = Phi_Rk @ Phi_moe.T + np.diag(lamb)  # (rows, rows)
+            Phi_Rk = Phi_moe * R[k]
+            cov = Phi_Rk @ Phi_moe.T + np.diag(lamb)
             inv_cov = np.linalg.inv(cov)
-            Z_tmp = Z_orig * R[k]  # (d, N)
-            rhs = Phi_moe @ Z_tmp.T  # (rows, d)
-            W_k = inv_cov @ rhs  # (rows, d)
-            W_k[0, :] = 0.0  # keep the intercept
+            Z_tmp = Z_orig * R[k]
+            rhs = Phi_moe @ Z_tmp.T
+            W_k = inv_cov @ rhs
+            W_k[0, :] = 0.0
             W_batch[k] = W_k[batch_slice, :]
         return W_batch
 
     def _extract_batch_levels(self, harmony_out, batch: npt.NDArray[Any]) -> np.ndarray:
-        """Extract the batch-level ordering implied by Phi_moe's columns.
-
-        ``harmonypy`` uses ``pd.factorize(meta[vars_use[0]])`` under the
-        hood, so the order is the first-occurrence order in the meta
-        DataFrame we provided.
-        """
-        seen: list[str] = []
-        for b in batch.tolist():
-            s = str(b)
-            if s not in seen:
-                seen.append(s)
-        return np.asarray(seen, dtype=object)
+        """Return the batch levels in ``Phi_moe`` order (sorted, as ``pd.get_dummies``)."""
+        return np.asarray(sorted({str(b) for b in batch}), dtype=object)
 
     def _fit_impl(self, X_df: pd.DataFrame, batch: npt.NDArray[Any]) -> None:
         harmonypy = self._require_harmonypy()
-        if self.random_state is not None:
-            np.random.seed(self.random_state)
+        if self.nclust is not None and self.nclust < 2:
+            raise ValueError(f"nclust must be >= 2; got {self.nclust}.")
 
         meta, vars_use = self._build_meta(X_df.index, batch)
         X_orig = X_df.to_numpy(dtype=float)
 
-        # Optional StandardScaler before PCA: gives every feature equal
-        # weight in the principal components, matching the Seurat /
-        # Scanpy ``ScaleData -> PCA`` convention from single-cell
-        # genomics where Harmony was first developed.  The scaler is
-        # frozen at fit time and reused on unseen rows at transform.
         if self.scale_before_pca:
             self.scaler_ = StandardScaler().fit(X_orig)
             X_scaled = self.scaler_.transform(X_orig)
@@ -344,21 +338,29 @@ class Harmony(BaseBatchCorrector):
             self.scaler_ = None
             X_scaled = X_orig
 
-        # PCA preprocessing is mandatory and fit on training rows only.
-        # It is then frozen and re-used verbatim by ``transform`` so no
-        # information leaks from test rows back into the basis.
         n_pcs = self._resolve_n_components(X_scaled.shape[0], X_scaled.shape[1])
         self.pca_ = PCA(n_components=n_pcs, random_state=self.random_state)
         X_work = self.pca_.fit_transform(X_scaled)
 
+        n_samples = X_work.shape[0]
+        nclust = (
+            self.nclust
+            if self.nclust is not None
+            else max(2, min(round(n_samples / 30.0), 100))
+        )
+        seed = (
+            self.random_state
+            if self.random_state is not None
+            else int(np.random.default_rng().integers(2**31 - 1))
+        )
         kwargs: dict[str, Any] = {
             "vars_use": vars_use,
             "theta": self.theta,
             "max_iter_harmony": self.max_iter,
             "verbose": self.verbose,
+            "nclust": nclust,
+            "random_state": seed,
         }
-        if self.nclust is not None:
-            kwargs["nclust"] = self.nclust
 
         log_ctx = (
             _silence_harmonypy_logger()
@@ -369,38 +371,26 @@ class Harmony(BaseBatchCorrector):
             harmony_out = harmonypy.run_harmony(X_work, meta, **kwargs)
 
         self.batch_levels_ = self._extract_batch_levels(harmony_out, batch)
-        # Y_ / W_batch_ live in PCA space.  The closed-form transform
-        # projects new rows into the same space before applying them.
-        self.Y_ = harmony_out.Y  # (n_components, K)
-        self.sigma_ = harmony_out.sigma.astype(float)  # (K,)
-        self.W_batch_ = self._extract_W_batch(
-            harmony_out, self.batch_levels_
-        )  # (K, B, n_components)
+        self.Y_ = harmony_out.Y
+        self.sigma_ = harmony_out.sigma.astype(float)
+        self.W_batch_ = self._extract_W_batch(harmony_out, self.batch_levels_)
         self.n_clusters_ = int(self.Y_.shape[1])
         self.n_iter_ = int(len(getattr(harmony_out, "kmeans_rounds", []) or [0]))
 
-        # Same-matrix fast-path cache in the original feature space -
-        # map harmonypy's Z_corr back through the fitted PCA so users
-        # who call ``transform(X_train)`` (or ``fit_transform``) see
-        # ``(n_samples, n_features)``.  When the scaler is in use we
-        # also un-standardise so the cached output is on the original
-        # measurement scale, matching the closed-form transform path.
-        Z_corr_work = np.asarray(harmony_out.Z_corr)  # (N, n_components)
+        Z_corr_work = np.asarray(harmony_out.Z_corr)
         Z_corr_scaled = self.pca_.inverse_transform(Z_corr_work)
         if self.scaler_ is not None:
             Z_corr_orig = self.scaler_.inverse_transform(Z_corr_scaled)
         else:
             Z_corr_orig = Z_corr_scaled
-        self.X_fit_ = X_orig
-        self._corrected_cache_ = Z_corr_orig  # (N, n_features)
+        self.X_fit_ = X_orig.copy()
+        self._corrected_cache_ = Z_corr_orig
 
     def _transform_impl(
         self, X_df: pd.DataFrame, batch: npt.NDArray[Any]
     ) -> pd.DataFrame:
         X_orig = X_df.to_numpy(dtype=float)
 
-        # Fast path: caller transforms the exact matrix we fit on ->
-        # return the cached correction byte-for-byte.
         if X_orig.shape == self.X_fit_.shape and np.array_equal(X_orig, self.X_fit_):
             return pd.DataFrame(
                 self._corrected_cache_,
@@ -408,7 +398,6 @@ class Harmony(BaseBatchCorrector):
                 columns=X_df.columns,
             )
 
-        # Closed-form correction on new rows --------------------------
         batch_str = np.asarray([str(b) for b in batch])
         known = {lvl: i for i, lvl in enumerate(self.batch_levels_)}
         unseen = sorted(set(batch_str) - set(known))
@@ -420,19 +409,14 @@ class Harmony(BaseBatchCorrector):
             )
         batch_idx = np.asarray([known[b] for b in batch_str], dtype=int)
 
-        # Project into PCA space using the fitted basis - no data from
-        # ``X_orig`` flows back into the scaler / PCA at fit time, so
-        # the train/test split stays clean.
         if self.scaler_ is not None:
             X_scaled = self.scaler_.transform(X_orig)
         else:
             X_scaled = X_orig
         X_work = self.pca_.transform(X_scaled)
 
-        R_new = self._softmax_assignment(X_work)  # (N, K)
+        R_new = self._softmax_assignment(X_work)
 
-        # W_batch_ shape (K, B, n_components); pull the batch slice per
-        # sample -> (N, K, n_components); weight by R_new and sum over K.
         W_selected = self.W_batch_[:, batch_idx, :].transpose(1, 0, 2)
         correction = np.einsum("nk,nkd->nd", R_new, W_selected)
 

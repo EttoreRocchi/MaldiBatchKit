@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -345,7 +346,6 @@ def test_diagnose_before_only(csv_inputs, tmp_path):
 
 
 def test_diagnose_with_corrected(csv_inputs, tmp_path):
-    # First produce a corrected file, then diagnose
     corrected = tmp_path / "after.csv"
     runner.invoke(
         app,
@@ -420,7 +420,6 @@ def test_correct_without_batch_for_csv_fails(csv_inputs, tmp_path):
 
 def test_labels_csv_rejects_multi_column(tmp_path, csv_inputs):
     bad = tmp_path / "bad_batch.csv"
-    # Write a batch CSV with TWO data columns -> should be rejected
     df = pd.DataFrame(
         {"a": [0] * 60, "b": [1] * 60},
         index=pd.Index([f"s{i:04d}" for i in range(60)], name="id"),
@@ -440,3 +439,180 @@ def test_labels_csv_rejects_multi_column(tmp_path, csv_inputs):
         ],
     )
     assert result.exit_code != 0
+
+
+def test_correct_refuses_non_finite_output(csv_inputs, tiny_dataset):
+    batch = tiny_dataset["batch"].copy()
+    batch.iloc[-1] = "b_single"
+    _write_labels_csv(csv_inputs["batch"], batch, "batch")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = runner.invoke(
+            app,
+            [
+                "correct",
+                "combat-fortin",
+                "-i",
+                str(csv_inputs["X"]),
+                "-o",
+                str(csv_inputs["out"]),
+                "--batch-csv",
+                str(csv_inputs["batch"]),
+                "--discrete-covariates-csv",
+                str(csv_inputs["discrete"]),
+            ],
+        )
+    assert result.exit_code != 0
+    assert "non-finite" in result.output
+    assert not csv_inputs["out"].exists()
+
+
+def test_correct_harmony_accepts_nclust(csv_inputs):
+    result = runner.invoke(
+        app,
+        [
+            "correct",
+            "harmony",
+            "-i",
+            str(csv_inputs["X"]),
+            "-o",
+            str(csv_inputs["out"]),
+            "--batch-csv",
+            str(csv_inputs["batch"]),
+            "--max-iter",
+            "3",
+            "--random-state",
+            "0",
+            "--nclust",
+            "3",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+
+def test_correct_reference_batch_matches_integer_batch_labels(tmp_path, tiny_dataset):
+    X = tiny_dataset["X"]
+    p = tmp_path / "X.npz"
+    batch = (tiny_dataset["batch"] == "b1").astype(int).to_numpy()
+    np.savez(p, X=X.to_numpy(), index=np.asarray(X.index), batch=batch)
+    result = runner.invoke(
+        app,
+        [
+            "correct",
+            "combat",
+            "-i",
+            str(p),
+            "-o",
+            str(tmp_path / "out.npz"),
+            "--reference-batch",
+            "1",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+
+def _diagnose(csv_inputs, corrected, report):
+    return runner.invoke(
+        app,
+        [
+            "diagnose",
+            "-i",
+            str(csv_inputs["X"]),
+            "-o",
+            str(report),
+            "--batch-csv",
+            str(csv_inputs["batch"]),
+            "--corrected",
+            str(corrected),
+        ],
+    )
+
+
+def test_diagnose_aligns_reordered_corrected_matrix(
+    csv_inputs, tiny_dataset, tmp_path, rng
+):
+    corrected = tmp_path / "after.csv"
+    X = tiny_dataset["X"]
+    X.iloc[rng.permutation(len(X))].to_csv(corrected)
+    report = tmp_path / "diag.csv"
+    result = _diagnose(csv_inputs, corrected, report)
+    assert result.exit_code == 0, result.output
+    row = pd.read_csv(report).set_index("metric").loc["kbet_acceptance_rate"]
+    assert row["value_after"] == pytest.approx(row["value_before"])
+
+
+def test_diagnose_rejects_corrected_with_other_sample_ids(
+    csv_inputs, tiny_dataset, tmp_path
+):
+    corrected = tmp_path / "after.csv"
+    X = tiny_dataset["X"].rename(index={tiny_dataset["X"].index[0]: "other"})
+    X.to_csv(corrected)
+    result = _diagnose(csv_inputs, corrected, tmp_path / "diag.csv")
+    assert result.exit_code != 0
+    assert "sample IDs" in result.output
+
+
+def test_correct_combat_chen_accepts_integer_covbat_cov_thresh(csv_inputs):
+    result = runner.invoke(
+        app,
+        [
+            "correct",
+            "combat-chen",
+            "-i",
+            str(csv_inputs["X"]),
+            "-o",
+            str(csv_inputs["out"]),
+            "--batch-csv",
+            str(csv_inputs["batch"]),
+            "--continuous-covariates-csv",
+            str(csv_inputs["continuous"]),
+            "--covbat-cov-thresh",
+            "3",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+
+def test_diagnose_npz_inputs_need_no_batch_csv(tmp_path, tiny_dataset):
+    X, batch = tiny_dataset["X"], tiny_dataset["batch"]
+    arrays = {
+        "X": X.to_numpy(),
+        "index": np.asarray(X.index),
+        "columns": np.asarray(X.columns),
+    }
+    np.savez(tmp_path / "in.npz", batch=batch.to_numpy(), **arrays)
+    np.savez(tmp_path / "corrected.npz", **arrays)
+    result = runner.invoke(
+        app,
+        [
+            "diagnose",
+            "-i",
+            str(tmp_path / "in.npz"),
+            "-o",
+            str(tmp_path / "report.csv"),
+            "--corrected",
+            str(tmp_path / "corrected.npz"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+
+def test_correct_combat_fortin_keeps_na_category_label(csv_inputs, tiny_dataset):
+    species = tiny_dataset["species"].map({"sp0": "NA", "sp1": "x"})
+    species.rename("species").to_frame().to_csv(csv_inputs["discrete"])
+    result = runner.invoke(
+        app,
+        [
+            "correct",
+            "combat-fortin",
+            "-i",
+            str(csv_inputs["X"]),
+            "-o",
+            str(csv_inputs["out"]),
+            "--batch-csv",
+            str(csv_inputs["batch"]),
+            "--discrete-covariates-csv",
+            str(csv_inputs["discrete"]),
+        ],
+    )
+    assert result.exit_code == 0, result.output

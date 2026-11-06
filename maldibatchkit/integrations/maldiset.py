@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import functools
 import inspect
+import warnings
 from copy import copy
 from typing import TYPE_CHECKING, Any
 
@@ -13,6 +15,41 @@ if TYPE_CHECKING:  # pragma: no cover - type-checking imports only
     from maldiamrkit import MaldiSet
 
 __all__ = ["MaldiSetAdapter"]
+
+_COVARIATE_KWARGS = {"species", "discrete_covariates", "covariates", "design"}
+
+
+@functools.cache
+def _corrected_class(base: type) -> type:
+    """Subclass of ``base`` whose ``filter`` returns subsets of the corrected X."""
+
+    def filter(self: Any, *filters: Any) -> Any:
+        out = base.filter(self, *filters)
+        out.__class__ = type(self)
+        out._X_cache = self._X_cache.loc[self._X_cache.index.isin(out.meta.index)]
+        out.meta = out.meta.loc[out._X_cache.index].rename_axis(out.meta.index.name)
+        return out
+
+    def __reduce__(self: Any) -> tuple:
+        return _restore_corrected, (base, self.__dict__)
+
+    return type(
+        f"Corrected{base.__name__}",
+        (base,),
+        {
+            "filter": filter,
+            "__reduce__": __reduce__,
+            "_corrected_base": base,
+            "__module__": __name__,
+        },
+    )
+
+
+def _restore_corrected(base: type, state: dict) -> Any:
+    """Rebuild a corrected set; used by ``copy`` and ``pickle``."""
+    obj = object.__new__(_corrected_class(base))
+    obj.__dict__.update(state)
+    return obj
 
 
 def _require_maldiset():
@@ -95,17 +132,13 @@ class MaldiSetAdapter:
             raise KeyError(
                 f"batch_column={self.batch_column!r} not found in MaldiSet metadata."
             )
+        for name in ("species_column", "quality_column"):
+            column = getattr(self, name)
+            if column is not None and column not in meta.columns:
+                raise KeyError(f"{name}={column!r} not found in MaldiSet metadata.")
         batch = meta[self.batch_column]
-        species = (
-            meta[self.species_column]
-            if self.species_column and self.species_column in meta.columns
-            else None
-        )
-        quality = (
-            meta[self.quality_column]
-            if self.quality_column and self.quality_column in meta.columns
-            else None
-        )
+        species = meta[self.species_column] if self.species_column else None
+        quality = meta[self.quality_column] if self.quality_column else None
         return {"X": X, "batch": batch, "species": species, "quality": quality}
 
     def correct(
@@ -125,8 +158,9 @@ class MaldiSetAdapter:
             A MaldiBatchKit corrector class (or any transformer whose
             constructor takes ``batch=`` and, optionally, a
             species-style protected-covariate argument named
-            ``species`` / ``discrete_covariates`` / ``design`` /
-            ``covariates`` and/or a ``quality=`` argument).
+            ``species`` / ``discrete_covariates`` and/or a ``quality=``
+            argument). Species is not forwarded to Harmony's
+            ``covariates``, which harmonypy removes like the batch.
         transformer_kwargs : dict, optional
             Extra keyword arguments forwarded to ``transformer_cls``.
 
@@ -136,7 +170,18 @@ class MaldiSetAdapter:
             Shallow-copied dataset with its ``_X_cache`` replaced by the
             corrected feature matrix. The ``spectra`` list is the same
             object in the returned ``MaldiSet``; labels / metadata are
-            unchanged.
+            unchanged. Its ``filter`` returns subsets of the corrected
+            matrix.
+
+        Warns
+        -----
+        UserWarning
+            If ``species_column`` is set but ``transformer_cls`` has no
+            ``species`` / ``discrete_covariates`` argument and
+            ``transformer_kwargs`` passes no covariate (``design``,
+            ``covariates``, ...) either: species is then ignored. To protect
+            species in Limma, pass a numeric ``design`` via
+            ``transformer_kwargs``.
         """
         _require_maldiset()
         extracted = self.extract(ds)
@@ -151,18 +196,19 @@ class MaldiSetAdapter:
         except (TypeError, ValueError):  # pragma: no cover - exotic subclasses
             init_params = set()
 
-        # Route species metadata to a *categorical* protected-covariate
-        # slot, in decreasing order of specificity: dedicated
-        # ``species=``, then ComBat / Fortin's ``discrete_covariates=``,
-        # then Harmony's ``covariates=``.  We intentionally do NOT auto-
-        # route to Limma's ``design=`` (that slot is a numeric design
-        # matrix, not a label); Limma users who want to protect species
-        # should pass e.g. ``transformer_kwargs={"design": species_dummies}``.
         if species is not None:
-            for name in ("species", "discrete_covariates", "covariates"):
-                if name in init_params:
-                    kwargs[name] = species
-                    break
+            protected = [
+                n for n in ("species", "discrete_covariates") if n in init_params
+            ]
+            if protected:
+                kwargs[protected[0]] = species
+            elif not set(transformer_kwargs or {}) & _COVARIATE_KWARGS:
+                warnings.warn(
+                    f"{transformer_cls.__name__} has no protected-covariate "
+                    f"argument (species / discrete_covariates); species_column "
+                    f"is ignored.",
+                    stacklevel=2,
+                )
         if quality is not None and "quality" in init_params:
             kwargs["quality"] = quality
         if transformer_kwargs:
@@ -176,9 +222,11 @@ class MaldiSetAdapter:
             )
 
         new_ds = copy(ds)
-        # MaldiSet lazily rebuilds X from spectra unless _X_cache is set;
-        # inject the corrected matrix there so every downstream property
-        # (``.y``, ``.filter()``...) keeps working on the corrected data.
         new_ds._X_cache = X_corrected
-        new_ds.meta = ds.meta.loc[X_corrected.index].copy()
+        new_ds.meta = (
+            ds.meta.loc[X_corrected.index].copy().rename_axis(ds.meta.index.name)
+        )
+        new_ds.__class__ = _corrected_class(
+            getattr(type(ds), "_corrected_base", type(ds))
+        )
         return new_ds

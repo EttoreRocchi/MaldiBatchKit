@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from .._utils import ArrayLike, _resolve_mz_axis
+from .._utils import ArrayLike, _check_labels, _resolve_mz_axis
 
 __all__ = ["plot_peak_shift"]
 
@@ -53,7 +53,7 @@ def plot_peak_shift(
     fig, ax : matplotlib Figure and Axes
     """
     df = _to_dataframe(X).astype(float)
-    b = np.asarray(batches)
+    b = _check_labels(batches, df.shape[0], "batches")
     mz, mz_is_real = _resolve_mz_axis(df, mz_values)
 
     if reference is None:

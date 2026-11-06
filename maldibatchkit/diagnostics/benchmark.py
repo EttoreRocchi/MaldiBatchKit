@@ -23,9 +23,13 @@ Aggregation
   and a confidence interval. The convention is:
 
   - When ``n_bootstrap >= 2``, ``ci_lo`` / ``ci_hi`` are the 2.5 / 97.5
-    **percentiles** of the bootstrap distribution and ``value`` is the
-    bootstrap mean (this is the standard non-parametric bootstrap
-    percentile interval, e.g. Efron & Tibshirani 1993).
+    **percentiles** of the metric over ``n_bootstrap`` stratified
+    subsamples drawn **without replacement** (``subsample_fraction`` of
+    each batch), and ``value`` is the full-data point estimate.
+    Resampling with replacement is avoided because duplicated rows are
+    distance-0 same-batch neighbours that bias the kNN metrics. kNN /
+    perplexity-based metrics also depend on the number of samples, so
+    the interval describes the metric at the subsample size.
   - With ``n_bootstrap < 2`` but ``n_repeats >= 3`` (only meaningful for
     ``protocol='stratified_split'``), ``ci_lo`` / ``ci_hi`` are the
     2.5 / 97.5 percentiles **across repeats**, so repeat-to-repeat
@@ -53,6 +57,7 @@ from sklearn.model_selection import StratifiedShuffleSplit
 
 from .._base import BaseBatchCorrector
 from .._utils import ArrayLike
+from ..corrections.combat import ComBat
 from .generic import (
     kbet,
     lisi,
@@ -81,7 +86,7 @@ def _peak_drift_mean(X: ArrayLike, batch: ArrayLike, **kw: Any) -> float:
     out = peak_position_drift(X, batch, mz_values=mz_values, top_k=top_k)
     if out.empty:
         return float("nan")
-    return float(out["mean_delta_mz"].mean())
+    return float(out["mean_abs_delta_mz"].mean())
 
 
 def _tic_cov_mean(X: ArrayLike, batch: ArrayLike, **kw: Any) -> float:
@@ -102,11 +107,11 @@ _METRIC_REGISTRY: dict[str, Callable[..., float]] = {
         lisi_normalized(X, batch, perplexity=kw.get("perplexity", 30.0))
     ),
     "silhouette_batch": lambda X, batch, **kw: silhouette_batch(X, batch),
-    "species_preservation": lambda X, batch, *, species=None, **kw: float(
-        species_preservation(
-            X,
-            species if species is not None else batch,
-            perplexity=kw.get("perplexity", 30.0),
+    "species_preservation": lambda X, batch, *, species=None, **kw: (
+        float("nan")
+        if species is None
+        else float(
+            species_preservation(X, species, perplexity=kw.get("perplexity", 30.0))
         )
     ),
     "peak_position_drift": _peak_drift_mean,
@@ -123,6 +128,31 @@ _METRIC_DIRECTION: dict[str, str] = {
     "peak_position_drift": "lower",
     "tic_cov_per_batch": "lower",
 }
+
+
+_COMBAT_SAMPLE_PARAMS = (
+    "batch",
+    "discrete_covariates",
+    "continuous_covariates",
+    "subject_id",
+    "time_covariate",
+)
+
+
+def _check_pandas_sample_inputs(name: str, corrector: Any, protocol: str) -> None:
+    """Raise if a per-sample input of ``corrector`` is not a pandas object."""
+    params = getattr(corrector, "_sample_aligned_params", None)
+    if params is None:
+        params = _COMBAT_SAMPLE_PARAMS if isinstance(corrector, ComBat) else ("batch",)
+    for param in params:
+        value = getattr(corrector, param, None)
+        if value is not None and not isinstance(value, pd.Series | pd.DataFrame):
+            raise ValueError(
+                f"Corrector {name!r} stores `{param}` as a "
+                f"{type(value).__name__}, but {protocol} fits it on row "
+                f"subsets: pass `{param}` as a pandas Series (or DataFrame) "
+                f"indexed like X so it is aligned by sample ID."
+            )
 
 
 def _resolve_metric(metric: Any) -> tuple[str, Callable[..., float]]:
@@ -178,14 +208,16 @@ def _bootstrap_indices(
     rng: np.random.Generator,
     batch: np.ndarray,
     n_bootstrap: int,
+    fraction: float,
 ) -> list[np.ndarray]:
-    """Stratified bootstrap row indices, sampling with replacement within each batch."""
+    """Stratified subsample row indices: ``fraction`` of each batch, no replacement."""
     levels = np.unique(batch)
     by_level = {lvl: np.flatnonzero(batch == lvl) for lvl in levels}
     out = []
     for _ in range(n_bootstrap):
         chunks = [
-            rng.choice(idxs, size=len(idxs), replace=True) for idxs in by_level.values()
+            rng.choice(idxs, size=max(1, round(fraction * len(idxs))), replace=False)
+            for idxs in by_level.values()
         ]
         out.append(np.concatenate(chunks))
     return out
@@ -199,9 +231,10 @@ def _summarise(group: pd.DataFrame, has_bootstrap: bool) -> pd.Series:
         return pd.Series(
             {"value": np.nan, "ci_lo": np.nan, "ci_hi": np.nan, "std": np.nan, "n": 0}
         )
-    if has_bootstrap and n >= 2:
-        ci_lo, ci_hi = np.nanpercentile(vals, [2.5, 97.5])
-        value = float(np.nanmean(vals))
+    boot = group.loc[group["bootstrap"] >= 0, "value"].to_numpy(dtype=float)
+    if has_bootstrap and boot.size >= 2:
+        ci_lo, ci_hi = np.nanpercentile(boot, [2.5, 97.5])
+        value = float(np.nanmean(group.loc[group["bootstrap"] < 0, "value"]))
     elif n >= 3:
         ci_lo, ci_hi = np.nanpercentile(vals, [2.5, 97.5])
         value = float(np.nanmean(vals))
@@ -240,16 +273,20 @@ class BatchCorrectionBenchmark:
         Number of repeated splits for ``'stratified_split'``.
     n_bootstrap : int, default=0
         If non-zero, every metric is recomputed on ``n_bootstrap``
-        stratified row-resamples of the (corrected) matrix to give
-        confidence intervals. ``0`` disables bootstrapping.
+        stratified row subsamples (without replacement, see
+        ``subsample_fraction``) of the (corrected) matrix to give
+        confidence intervals. ``0`` disables resampling.
     bootstrap_mode : {'resample_metric', 'refit'}, default='resample_metric'
         ``'resample_metric'`` (the fast, default mode) fits each
-        corrector once and resamples rows of the corrected matrix to
+        corrector once and subsamples rows of the corrected matrix to
         score the metric repeatedly - CIs reflect the metric's sampling
-        noise only. ``'refit'`` resamples rows of ``X`` and refits the
-        corrector for every bootstrap iteration; this is slower
+        noise only. ``'refit'`` subsamples rows of ``X`` and refits the
+        corrector for every resampling iteration; this is slower
         (``n_correctors × n_bootstrap`` extra fits per repeat) but the
         CI also captures corrector stability.
+    subsample_fraction : float, default=0.8
+        Fraction of each batch drawn (without replacement) in every
+        resampling iteration; must be in ``(0, 1]``.
     random_state : int or np.random.Generator, optional
         Seed / generator for splits and bootstrap.
 
@@ -260,7 +297,8 @@ class BatchCorrectionBenchmark:
         ``bootstrap``, ``value``. ``bootstrap == -1`` marks the
         point-estimate row (no bootstrap resampling).
     results_ : pd.DataFrame
-        Per-(method, metric) summary: ``value`` (mean), ``ci_lo`` /
+        Per-(method, metric) summary: ``value`` (full-data estimate with
+        resampling, otherwise the mean across repeats), ``ci_lo`` /
         ``ci_hi`` (2.5 / 97.5 percentile), ``std`` (sample std), ``n``
         (number of observations), ``better`` (``'higher'``, ``'lower'``,
         ``'zero'`` for metrics where both signs are bad like
@@ -303,6 +341,7 @@ class BatchCorrectionBenchmark:
         n_repeats: int = 1,
         n_bootstrap: int = 0,
         bootstrap_mode: str = "resample_metric",
+        subsample_fraction: float = 0.8,
         random_state: int | np.random.Generator | None = None,
     ) -> None:
         if protocol not in ("full_data", "stratified_split"):
@@ -316,6 +355,14 @@ class BatchCorrectionBenchmark:
             )
         if not correctors:
             raise ValueError("`correctors` must contain at least one entry.")
+        if not metrics:
+            raise ValueError("`metrics` must contain at least one metric.")
+        if int(n_repeats) < 1:
+            raise ValueError(f"n_repeats must be >= 1; got {n_repeats!r}.")
+        if not 0.0 < subsample_fraction <= 1.0:
+            raise ValueError(
+                f"subsample_fraction must be in (0, 1]; got {subsample_fraction!r}."
+            )
         self.correctors = dict(correctors)
         self.metrics = tuple(metrics)
         self.protocol = protocol
@@ -323,6 +370,7 @@ class BatchCorrectionBenchmark:
         self.n_repeats = int(n_repeats)
         self.n_bootstrap = int(n_bootstrap)
         self.bootstrap_mode = bootstrap_mode
+        self.subsample_fraction = subsample_fraction
         self.random_state = random_state
 
     def _rng(self) -> np.random.Generator:
@@ -334,6 +382,11 @@ class BatchCorrectionBenchmark:
         resolved = []
         for m in self.metrics:
             name, fn = _resolve_metric(m)
+            if any(name == seen for seen, _, _ in resolved):
+                raise ValueError(
+                    f"duplicate metric name {name!r}: give the metrics distinct "
+                    f"names (e.g. def-functions instead of lambdas)."
+                )
             direction = _METRIC_DIRECTION.get(name, "n/a")
             resolved.append((name, fn, direction))
         return resolved
@@ -392,6 +445,21 @@ class BatchCorrectionBenchmark:
 
         metrics_resolved = self._resolve_metrics()
         rng = self._rng()
+        if species is None and "species_preservation" in self.metrics:
+            warnings.warn(
+                "species_preservation needs `species=`; it is reported as NaN.",
+                stacklevel=2,
+            )
+
+        if self.protocol == "stratified_split":
+            subset_protocol = "protocol='stratified_split'"
+        elif self.n_bootstrap > 0 and self.bootstrap_mode == "refit":
+            subset_protocol = "bootstrap_mode='refit'"
+        else:
+            subset_protocol = None
+        if subset_protocol is not None:
+            for name, corrector in self.correctors.items():
+                _check_pandas_sample_inputs(name, corrector, subset_protocol)
 
         if self.protocol == "full_data":
             long_rows, corrected, baseline_rows = self._run_full_data(
@@ -407,14 +475,16 @@ class BatchCorrectionBenchmark:
 
         direction_lookup = {name: d for name, _, d in metrics_resolved}
         has_bootstrap = self.n_bootstrap >= 2
-        summary = (
-            results_long.groupby(["method", "metric"], sort=False)
-            .apply(
-                lambda g: _summarise(g, has_bootstrap=has_bootstrap),
-                include_groups=False,
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            summary = (
+                results_long.groupby(["method", "metric"], sort=False)
+                .apply(
+                    lambda g: _summarise(g, has_bootstrap=has_bootstrap),
+                    include_groups=False,
+                )
+                .reset_index()
             )
-            .reset_index()
-        )
         summary["better"] = summary["metric"].map(direction_lookup).fillna("n/a")
         self.results_ = summary
         self.corrected_ = corrected
@@ -460,7 +530,9 @@ class BatchCorrectionBenchmark:
             )
 
         if self.n_bootstrap > 0 and self.bootstrap_mode == "resample_metric":
-            boot_idx_sets = _bootstrap_indices(rng, batch, self.n_bootstrap)
+            boot_idx_sets = _bootstrap_indices(
+                rng, batch, self.n_bootstrap, self.subsample_fraction
+            )
             for b, sel in enumerate(boot_idx_sets):
                 Xb = X_corrected.iloc[sel]
                 bb = batch[sel]
@@ -526,7 +598,9 @@ class BatchCorrectionBenchmark:
             )
 
             if self.n_bootstrap > 0 and self.bootstrap_mode == "refit":
-                boot_idx_sets = _bootstrap_indices(rng, batch, self.n_bootstrap)
+                boot_idx_sets = _bootstrap_indices(
+                    rng, batch, self.n_bootstrap, self.subsample_fraction
+                )
                 for b, sel in enumerate(boot_idx_sets):
                     X_boot = X_df.iloc[sel]
                     b_boot = batch[sel]
@@ -706,14 +780,13 @@ class BatchCorrectionBenchmark:
             if df[["ci_lo", "ci_hi"]].notna().all().all():
                 ax.errorbar(
                     x=range(len(df)),
-                    y=df["value"],
-                    yerr=[df["value"] - df["ci_lo"], df["ci_hi"] - df["value"]],
+                    y=(df["ci_lo"] + df["ci_hi"]) / 2,
+                    yerr=(df["ci_hi"] - df["ci_lo"]) / 2,
                     fmt="none",
                     ecolor="black",
                     capsize=3,
                 )
             ax.set_title(metrics[0])
-            # Anchor-rotated, right-aligned labels stay under their bars.
             plt.setp(
                 ax.get_xticklabels(),
                 rotation=30,
@@ -728,8 +801,8 @@ class BatchCorrectionBenchmark:
             if sub[["ci_lo", "ci_hi"]].notna().all().all():
                 ax_i.errorbar(
                     x=range(len(sub)),
-                    y=sub["value"],
-                    yerr=[sub["value"] - sub["ci_lo"], sub["ci_hi"] - sub["value"]],
+                    y=(sub["ci_lo"] + sub["ci_hi"]) / 2,
+                    yerr=(sub["ci_hi"] - sub["ci_lo"]) / 2,
                     fmt="none",
                     ecolor="black",
                     capsize=3,

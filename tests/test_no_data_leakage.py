@@ -106,7 +106,6 @@ def _fitted_state(est):
         elif isinstance(value, (pd.Series, pd.DataFrame)):
             state[name] = value.copy(deep=True)
         else:
-            # best-effort deep-copy for scalars / dicts / objects
             state[name] = copy.deepcopy(value)
     return state
 
@@ -124,8 +123,6 @@ def _assert_state_equal(a: dict, b: dict) -> None:
         elif isinstance(va, pd.DataFrame):
             pd.testing.assert_frame_equal(va, vb)
         elif isinstance(va, dict):
-            # BatchAwareWarping stores a dict of Warping objects;
-            # compare key sets and the underlying reference spectra.
             assert set(va) == set(vb)
             for k in va:
                 if hasattr(va[k], "ref_spec_"):
@@ -190,10 +187,6 @@ def _maldi_builders(ds):
     }
 
 
-#   fit(X_train) must yield identical parameters whether `batch` covers
-#   the full dataset or just the training rows.
-
-
 @pytest.mark.parametrize(
     "method_name",
     list(
@@ -220,23 +213,18 @@ def test_fit_only_uses_training_rows(leakage_dataset, method_name):
     X_train, _ = _split(leakage_dataset)
     builders = _builders(leakage_dataset)
 
-    # (a) builder sees batch/covariates indexed by ALL samples (train + test)
     est_full = builders[method_name]().fit(X_train)
     state_full = _fitted_state(est_full)
 
-    # (b) builder sees batch/covariates indexed by TRAINING samples only
     ds_train_only = {
         k: (v.loc[X_train.index] if isinstance(v, (pd.Series, pd.DataFrame)) else v)
         for k, v in leakage_dataset.items()
     }
-    ds_train_only["X"] = leakage_dataset["X"]  # X itself is unused by builder
+    ds_train_only["X"] = leakage_dataset["X"]
     est_train = _builders(ds_train_only)[method_name]().fit(X_train)
     state_train = _fitted_state(est_train)
 
     _assert_state_equal(state_full, state_train)
-
-
-#   transform(X_test) must NOT mutate fitted state.
 
 
 @pytest.mark.parametrize(
@@ -276,10 +264,6 @@ def test_transform_does_not_mutate_fitted_state(leakage_dataset, method_name):
     _assert_state_equal(state_before, state_after)
 
 
-#   transform(X_test) is a pure function of fitted state: any earlier
-#   transform call on different rows must not change the output on X_test.
-
-
 @pytest.mark.parametrize(
     "method_name",
     list(
@@ -307,7 +291,6 @@ def test_transform_is_pure_function_of_fit(leakage_dataset, method_name):
     est = _builders(leakage_dataset)[method_name]().fit(X_train)
 
     first = np.asarray(est.transform(X_test))
-    # Poke it with a totally unrelated matrix in between
     X_garbage = X_train.copy()
     X_garbage.iloc[:, :] = 99.0
     _ = est.transform(X_garbage)
@@ -346,7 +329,6 @@ def test_harmony_transform_rejects_unseen_batches(leakage_dataset):
         max_iter=3,
         nclust=3,
     ).fit(X_train)
-    # Fabricate a batch label not present at fit time
     est.batch = pd.Series(["brand_new_batch"] * len(X_test), index=X_test.index)
     with pytest.raises(ValueError, match="Unseen batch level"):
         est.transform(X_test)
@@ -358,7 +340,6 @@ def test_limma_refuses_unseen_batch_rather_than_silent_zero(leakage_dataset):
     X_train, X_test = _split(leakage_dataset)
     est = Limma(batch=leakage_dataset["batch"]).fit(X_train)
 
-    # Inject a batch level that did not appear at fit time
     est.batch = pd.Series(["brand_new_batch"] * len(X_test), index=X_test.index)
     with pytest.raises(ValueError, match="Unseen batch level"):
         est.transform(X_test)

@@ -64,14 +64,16 @@ has a sample-id column first and one or more data columns after:
 +--------------------------------+----------------------------------+
 | ``--design-csv``               | >= 1 (Limma design of interest)  |
 +--------------------------------+----------------------------------+
-| ``--covariates-csv``           | >= 1 (Harmony vars_use)          |
+| ``--covariates-csv``           | >= 1 (Harmony vars_use, removed) |
 +--------------------------------+----------------------------------+
 | ``--mz-csv``                   | 1 (m/z per feature, for drift)   |
 +--------------------------------+----------------------------------+
 
-Indices in all sidecar CSVs should match ``X.index``. If they do not,
-MaldiBatchKit falls back to positional alignment when the row counts
-match, and fails with a clear error otherwise.
+Indices in all sidecar CSVs must cover ``X.index``: rows are matched by
+sample ID, and the command fails listing the missing IDs otherwise.
+Sample IDs and labels are read as strings, so ``001`` stays ``001`` and
+``NA`` is a label, not a missing value. ``--reference-batch`` is matched
+against the batch labels by their string form.
 
 Usage Examples
 --------------
@@ -138,6 +140,9 @@ Harmony
         --theta 2.0 --max-iter 20 --random-state 0 \
         -o X_corrected.csv
 
+``--nclust`` sets the number of Harmony clusters (default: harmonypy's
+``round(N / 30)`` heuristic, at least 2).
+
 Batch-Aware Warping
 ^^^^^^^^^^^^^^^^^^^
 
@@ -184,11 +189,17 @@ Then every ``correct`` subcommand accepts the NPZ directly:
 Refusal / Error Modes
 ---------------------
 
-* ``combat-fortin`` / ``combat-chen`` without any covariate CSV refuse
-  to run with a hint to use plain ``combat`` instead - Fortin / CovBat
-  without covariates reduce to Johnson.
+* ``combat-fortin`` without any covariate CSV refuses to run with a hint
+  to use plain ``combat`` instead - Fortin without covariates reduces to
+  Johnson. ``combat-chen`` runs without covariates: that is plain CovBat
+  (Johnson ComBat plus the covariance correction).
 * ``species-combat`` without ``--species-csv`` and ``quality-combat``
   without ``--quality-csv`` refuse to run.
+* Every ``correct`` command exits with code 1, without writing the
+  output, when the correction produces non-finite values.
+* ``diagnose`` fails when the ``--corrected`` matrix has other sample IDs
+  or feature names than ``--input``; rows and columns are matched by
+  name, not by position.
 * Index mismatches between ``X`` and a sidecar CSV produce a clear
   error identifying which rows are missing, rather than silently
   realigning.

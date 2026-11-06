@@ -26,7 +26,6 @@ def test_noop_returns_ndarray_for_ndarray_input(tiny_dataset):
 def test_noop_is_check_is_fitted_compatible(tiny_dataset):
     c = NoOpCorrector(batch=tiny_dataset["batch"])
     c.fit(tiny_dataset["X"])
-    # check_is_fitted picks up feature_names_in_ from the base class
     check_is_fitted(c)
 
 
