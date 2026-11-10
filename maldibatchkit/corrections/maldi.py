@@ -22,7 +22,7 @@ def _try_import_maldiamrkit():
             "This transformer requires 'maldiamrkit' (normally installed "
             "alongside MaldiBatchKit). Reinstall with "
             "`pip install -U maldibatchkit` or "
-            "`pip install maldiamrkit>=0.13.0`."
+            "`pip install maldiamrkit>=0.15.0`."
         ) from exc
     return maldiamrkit
 

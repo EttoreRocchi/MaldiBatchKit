@@ -1,4 +1,4 @@
-Corrections Module
+Corrections module
 ==================
 
 Batch-effect correctors. Every class is a scikit-learn compatible
@@ -7,7 +7,7 @@ and covariates are passed at construction time and realigned to
 ``X.index`` on each call, so correctors are safe inside
 ``sklearn.pipeline.Pipeline`` and cross-validation without leakage.
 
-Base Class
+Base class
 ----------
 
 .. autoclass:: maldibatchkit.BaseBatchCorrector
@@ -19,7 +19,7 @@ All shipped correctors inherit from this class. Custom correctors
 should follow the same pattern - see :doc:`/extending` for a full
 walkthrough.
 
-ComBat Variants
+ComBat variants
 ---------------
 
 The core ComBat implementation lives in
@@ -32,7 +32,7 @@ MALDI-specific preset for the species-as-covariate case.
    :undoc-members:
    :show-inheritance:
 
-Species-Aware ComBat
+Species-aware ComBat
 ^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: maldibatchkit.SpeciesAwareComBat
@@ -40,7 +40,7 @@ Species-Aware ComBat
    :undoc-members:
    :show-inheritance:
 
-Quality-Weighted ComBat
+Quality-weighted ComBat
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: maldibatchkit.QualityWeightedComBat
@@ -48,7 +48,7 @@ Quality-Weighted ComBat
    :undoc-members:
    :show-inheritance:
 
-Linear-Model Corrections
+Linear-model corrections
 ------------------------
 
 .. autoclass:: maldibatchkit.Limma
@@ -56,7 +56,7 @@ Linear-Model Corrections
    :undoc-members:
    :show-inheritance:
 
-Single-Cell-Style Integration
+Single-cell-style integration
 -----------------------------
 
 .. autoclass:: maldibatchkit.Harmony
@@ -66,9 +66,10 @@ Single-Cell-Style Integration
 
 .. note::
 
-   :class:`~maldibatchkit.Harmony` is fit-transform only, matching the
-   behaviour of the upstream ``harmonypy`` reference - there is no
-   clean test-time ``transform`` step.
+   Published Harmony has no test-time step. Here, ``transform`` applies a
+   closed-form correction with the PCA, the cluster centroids and the
+   per-batch correction frozen at ``fit``, and raises ``ValueError`` on a
+   batch not seen at ``fit``.
 
 Baselines
 ---------
@@ -96,7 +97,7 @@ sophisticated methods.
    :undoc-members:
    :show-inheritance:
 
-Meta-Corrector
+Meta-corrector
 --------------
 
 :class:`~maldibatchkit.AutoCorrector` exposes ``method`` as a settable
@@ -109,7 +110,7 @@ families and let the downstream classifier score pick the winner. See
    :undoc-members:
    :show-inheritance:
 
-MALDI-Specific Corrections
+MALDI-specific corrections
 --------------------------
 
 .. autoclass:: maldibatchkit.BatchAwareWarping

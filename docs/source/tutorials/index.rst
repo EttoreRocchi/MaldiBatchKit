@@ -15,10 +15,10 @@ Each notebook is self-contained and can be downloaded from the
    notebooks/05_avoiding_data_leakage
    notebooks/06_choosing_a_corrector
 
-Example Workflows
+Example workflows
 -----------------
 
-Single-Call ComBat
+Single-call ComBat
 ~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
@@ -32,7 +32,7 @@ Single-Call ComBat
    report = diagnostic_report(X, X_corrected, batch)
    print(report)
 
-Train/Test Safe Pipeline
+Train/test safe pipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
@@ -55,7 +55,7 @@ Train/Test Safe Pipeline
    pipe.fit(X_train, y_train)
    score = pipe.score(X_test, y_test)
 
-Chained Warping + ComBat
+Chained warping + ComBat
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
@@ -71,7 +71,7 @@ Chained Warping + ComBat
    ])
    X_corrected = pipe.fit_transform(X)
 
-MaldiSet Adapter
+MaldiSet adapter
 ~~~~~~~~~~~~~~~~
 
 .. code-block:: python

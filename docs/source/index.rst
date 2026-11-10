@@ -5,14 +5,14 @@
    :width: 280px
    :class: only-light
 
-.. image:: _static/maldibatchkit_logo.png
+.. image:: _static/maldibatchkit_logo_dark.png
    :align: center
    :width: 280px
    :class: only-dark
 
 .. rst-class:: hero-section
 
-MaldiBatchKit Documentation
+MaldiBatchKit documentation
 ===========================
 
 Batch-effect correction methods for MALDI-TOF mass spectrometry in
@@ -33,32 +33,32 @@ and after correction.
       :outline:
       :shadow:
 
-      API Reference
+      API reference
 
    .. button-link:: quickstart.html
       :color: primary
       :outline:
       :shadow:
 
-      Quickstart Guide
+      Quickstart guide
 
 ----
 
-Key Features
+Key features
 ------------
 
 .. grid:: 2 2 3 3
    :gutter: 3
    :class-container: feature-grid
 
-   .. grid-item-card:: ComBat Variants
+   .. grid-item-card:: ComBat variants
       :link: api/corrections.html#combat-variants
       :link-type: url
 
       Johnson (2007), Fortin (2018) covariate-aware, and Chen (2022)
       CovBat re-exported from ``combatlearn`` with a unified sklearn API.
 
-   .. grid-item-card:: Species-Aware ComBat
+   .. grid-item-card:: Species-aware ComBat
       :link: api/corrections.html#species-aware-combat
       :link-type: url
 
@@ -66,14 +66,14 @@ Key Features
       covariate, so inter-species structure is preserved during
       harmonisation.
 
-   .. grid-item-card:: Quality-Weighted ComBat
+   .. grid-item-card:: Quality-weighted ComBat
       :link: api/corrections.html#quality-weighted-combat
       :link-type: url
 
       Weighted empirical-Bayes extension where low-SNR spectra contribute
       less to the shrinkage prior.
 
-   .. grid-item-card:: Linear-Model Corrections
+   .. grid-item-card:: Linear-model corrections
       :link: api/corrections.html#linear-model-corrections
       :link-type: url
 
@@ -87,21 +87,21 @@ Key Features
       Iterative soft-clustering integration (Korsunsky 2019) via
       ``harmonypy``, suitable for many-batch designs.
 
-   .. grid-item-card:: Baselines & Scaling
+   .. grid-item-card:: Baselines & scaling
       :link: api/corrections.html#baselines
       :link-type: url
 
       Median centering, z-score per batch, and reference scaling -
       simple, auditable corrections to compare against.
 
-   .. grid-item-card:: Batch-Aware Warping
+   .. grid-item-card:: Batch-aware warping
       :link: api/corrections.html#maldi-specific-corrections
       :link-type: url
 
       Per-batch m/z warping sharing a global reference, wrapping
       ``maldiamrkit.alignment.Warping`` for MALDI-specific drift.
 
-   .. grid-item-card:: Diagnostics Suite
+   .. grid-item-card:: Diagnostics suite
       :link: api/diagnostics.html
       :link-type: url
 
@@ -109,22 +109,22 @@ Key Features
       a tidy ``diagnostic_report`` that summarises before/after deltas.
 
    .. grid-item-card:: AutoCorrector
-      :link: choosing.html
+      :link: choosing.html#autocorrector-with-gridsearchcv
       :link-type: url
 
-      Meta-corrector with a swappable ``method`` hyperparameter — sweep
+      Meta-corrector with a swappable ``method`` hyperparameter: sweep
       across corrector families inside ``GridSearchCV`` and let the
       downstream AUROC pick the winner.
 
    .. grid-item-card:: Benchmark
-      :link: choosing.html
+      :link: choosing.html#batchcorrectionbenchmark
       :link-type: url
 
       ``BatchCorrectionBenchmark`` scores every corrector on every
-      metric with bootstrap CIs, returning a tidy table ready for
-      paper-figure comparisons.
+      metric with intervals from stratified subsamples, returning a tidy
+      table ready for paper-figure comparisons.
 
-   .. grid-item-card:: MaldiSet Integration
+   .. grid-item-card:: MaldiSet integration
       :link: api/integrations.html
       :link-type: url
 
@@ -138,7 +138,7 @@ Key Features
       ``maldibatchkit correct <method>`` and ``maldibatchkit diagnose``
       for batch processing, with matched NPZ / CSV I/O.
 
-   .. grid-item-card:: Extensible Base Class
+   .. grid-item-card:: Extensible base class
       :link: extending.html
       :link-type: url
 
@@ -148,7 +148,7 @@ Key Features
 
 ----
 
-Quick Example
+Quick example
 -------------
 
 .. code-block:: python
@@ -188,7 +188,7 @@ and then applied to held-out samples via ``transform``:
 .. toctree::
    :maxdepth: 2
    :hidden:
-   :caption: Get Started
+   :caption: Get started
 
    installation
    quickstart

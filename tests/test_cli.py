@@ -256,6 +256,29 @@ def test_correct_limma(csv_inputs):
     assert result.exit_code == 0, result.output
 
 
+def test_correct_limma_text_design_refused(csv_inputs, tiny_dataset, tmp_path):
+    """A non-numeric design CSV gives a usage error, not a traceback."""
+    design = tmp_path / "text_design.csv"
+    _write_dataframe_csv(design, tiny_dataset["species"].rename("species").to_frame())
+    result = runner.invoke(
+        app,
+        [
+            "correct",
+            "limma",
+            "-i",
+            str(csv_inputs["X"]),
+            "-o",
+            str(csv_inputs["out"]),
+            "--batch-csv",
+            str(csv_inputs["batch"]),
+            "--design-csv",
+            str(design),
+        ],
+    )
+    assert result.exit_code == 2
+    assert "numeric" in " ".join(result.output.split())
+
+
 def test_correct_harmony(csv_inputs):
     result = runner.invoke(
         app,

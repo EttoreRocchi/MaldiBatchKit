@@ -24,8 +24,24 @@ When to use which
   side-by-side reporting; it does **not** simulate a downstream
   classifier.
 
-Neither tool simulates a *new clinical site* — both rely on every batch
+Neither tool simulates a *new clinical site*: both rely on every batch
 being present at fit time for the inter-batch correctors we ship.
+
+Correctors differ in what they do with a batch not seen at ``fit``:
+
+* :class:`~maldibatchkit.ComBat` (all variants),
+  :class:`~maldibatchkit.SpeciesAwareComBat`,
+  :class:`~maldibatchkit.Limma` and :class:`~maldibatchkit.Harmony` raise
+  ``ValueError``.
+* :class:`~maldibatchkit.MedianCentering` and
+  :class:`~maldibatchkit.ZScorePerBatch` fall back to the grand statistics
+  of the training data, and :class:`~maldibatchkit.BatchAwareWarping` to a
+  warper trained on all training rows.
+* :class:`~maldibatchkit.QualityWeightedComBat`,
+  :class:`~maldibatchkit.ReferenceScaling` and
+  :class:`~maldibatchkit.NoOpCorrector` return those rows unchanged.
+
+:class:`~maldibatchkit.AutoCorrector` behaves like its inner method.
 
 AutoCorrector with GridSearchCV
 -------------------------------
@@ -43,9 +59,9 @@ method together with any classifier hyperparameters:
 
    from maldibatchkit import AutoCorrector
 
-   # X: (n_samples, n_features) DataFrame; batch & species aligned to X.index
+   # X: (n_samples, n_features) DataFrame; batch, species & snr aligned to X.index
    pipe = Pipeline([
-       ("correct", AutoCorrector(batch=batch, discrete_covariates=species)),
+       ("correct", AutoCorrector(batch=batch, discrete_covariates=species, quality=snr)),
        ("clf", LogisticRegression(max_iter=1000)),
    ])
 
@@ -56,7 +72,7 @@ method together with any classifier hyperparameters:
            "combat-fortin",
            "combat-johnson",
            "harmony",
-           "qw-combat",       # accepts `quality=`
+           "qw-combat",       # requires `quality=`
        ],
        "clf__C": [0.1, 1.0, 10.0],
    }
@@ -69,6 +85,34 @@ method together with any classifier hyperparameters:
    )
    grid.fit(X, y)
    print(grid.best_params_, grid.best_score_)
+
+Method aliases
+^^^^^^^^^^^^^^
+
+``method`` takes one of these aliases, or a corrector class (a
+:class:`~maldibatchkit.BaseBatchCorrector` subclass or
+:class:`~maldibatchkit.ComBat`). Instances raise ``TypeError``.
+
+====================  ==============================================
+Alias                 Corrector
+====================  ==============================================
+``combat``            :class:`~maldibatchkit.ComBat`, ``method="fortin"``
+``combat-fortin``     :class:`~maldibatchkit.ComBat`, ``method="fortin"``
+``combat-johnson``    :class:`~maldibatchkit.ComBat`, ``method="johnson"``
+``combat-chen``       :class:`~maldibatchkit.ComBat`, ``method="chen"``
+``species-combat``    :class:`~maldibatchkit.SpeciesAwareComBat`
+``qw-combat``         :class:`~maldibatchkit.QualityWeightedComBat`
+``limma``             :class:`~maldibatchkit.Limma`
+``harmony``           :class:`~maldibatchkit.Harmony`
+``batch-warping``     :class:`~maldibatchkit.BatchAwareWarping`
+``median``            :class:`~maldibatchkit.MedianCentering`
+``zscore``            :class:`~maldibatchkit.ZScorePerBatch`
+``reference``         :class:`~maldibatchkit.ReferenceScaling`
+``noop``              :class:`~maldibatchkit.NoOpCorrector`
+====================  ==============================================
+
+The alias ``combat`` means Fortin, whereas ``maldibatchkit correct combat``
+on the command line runs Johnson.
 
 Covariate routing
 ^^^^^^^^^^^^^^^^^
@@ -91,8 +135,8 @@ table is:
 ``reference_batch``           Any inner that accepts ``reference_batch``
 ============================  ==========================================
 
-Pass anything else through ``method_kwargs={...}``. Unrecognised entries
-are dropped silently (sklearn convention), so a single ``param_grid``
+Pass anything else through ``method_kwargs={...}``. Entries the inner
+method does not accept are dropped silently, so a single ``param_grid``
 can target several methods.
 
 BatchCorrectionBenchmark
@@ -125,6 +169,13 @@ under the chosen protocol.
    print(bench.rank(by="species_preservation"))
    bench.plot()  # bar facet per metric, error bars from the subsample CIs
 
+``metrics`` takes callables or these names: ``kbet`` and
+``kbet_acceptance_rate`` (the same metric), ``lisi``, ``lisi_normalized``,
+``silhouette_batch``, ``species_preservation``, ``peak_position_drift`` and
+``tic_cov_per_batch``. ``species_preservation`` needs ``species=`` in
+``fit``, otherwise it is ``NaN`` with a warning. ``peak_position_drift``
+accepts ``mz_values=`` in ``fit``.
+
 Protocols
 ^^^^^^^^^
 
@@ -142,22 +193,22 @@ Aggregation
 
 Two tables are always available after ``fit``:
 
-* ``bench.results_long_`` — one row per (method, metric, repeat,
+* ``bench.results_long_``: one row per (method, metric, repeat,
   bootstrap iteration). Use it to compute custom statistics or to
   drive a raincloud / strip plot.
-* ``bench.results_`` — one row per (method, metric) with ``value``
+* ``bench.results_``: one row per (method, metric) with ``value``
   (the full-data estimate when resampling, otherwise the mean across
   repeats), ``ci_lo`` / ``ci_hi`` (2.5 / 97.5 percentile), ``std``, ``n``,
-  and ``better`` (``'higher'``, ``'lower'``, or ``'n/a'`` for user
-  callables). The interval columns hold ``NaN`` when fewer than two
-  bootstraps and fewer than three repeats are available — don't read a
+  and ``better`` (``'higher'``, ``'lower'``, ``'zero'``, or ``'n/a'`` for
+  user callables). The interval columns hold ``NaN`` when fewer than two
+  bootstraps and fewer than three repeats are available, so don't read a
   CI from one point.
 
 ``bench.baseline_`` is a parallel one-row-per-metric table computed on
 the **uncorrected** ``X`` and is useful as a reference line in plots.
 
-Bootstrap modes
-^^^^^^^^^^^^^^^
+Resampling modes
+^^^^^^^^^^^^^^^^
 
 Every resample draws ``subsample_fraction`` (default 0.8) of each batch
 **without replacement**: duplicated rows would be distance-0 same-batch

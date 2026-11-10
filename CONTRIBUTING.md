@@ -14,11 +14,11 @@ pre-commit install
 ## Testing
 
 ```bash
-make test        # fast subset (excludes slow tests)
-make test-cov    # full run with term coverage report
+make test        # full test suite
+make test-cov    # full test suite with a terminal coverage report
 ```
 
-The coverage gate is 95%. Please add tests for any new public API.
+Please add tests for any new public API.
 
 ## Linting
 

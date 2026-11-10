@@ -28,19 +28,6 @@ if _notebooks_src.exists():
         ignore=shutil.ignore_patterns("__pycache__", "_demo.py", "*.py"),
     )
 
-# Expose a sphinx-click-compatible Click object for the Typer app so that
-# the ``.. click::`` directive in cli.rst can introspect the full command
-# tree without us having to modify the package source.
-try:
-    import typer
-
-    from maldibatchkit import cli as _cli_module
-
-    if not hasattr(_cli_module, "typer_click_object"):
-        _cli_module.typer_click_object = typer.main.get_command(_cli_module.app)
-except Exception:  # pragma: no cover - documentation-only shim
-    pass
-
 # Project information
 project = "MaldiBatchKit"
 copyright = "2026, Ettore Rocchi"
@@ -60,7 +47,7 @@ extensions = [
     "sphinx_autodoc_typehints",
     "nbsphinx",
     "sphinx_design",
-    "sphinx_click",
+    "sphinxcontrib.typer",
 ]
 
 # Napoleon settings for NumPy-style docstrings
@@ -143,24 +130,36 @@ nitpick_ignore_regex = [
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 html_theme = "pydata_sphinx_theme"
+html_title = f"MaldiBatchKit {release}"
 html_static_path = ["_static"]
-html_css_files = ["css/custom.css"]
-html_logo = "_static/maldibatchkit_logo.png"
+templates_path = ["_templates"]
+# Shared MaldiSuite theme, then the package colour
+html_css_files = ["css/maldisuite.css", "css/custom.css"]
+html_logo = "_static/maldibatchkit_lockup.svg"
+html_favicon = "_static/favicon.svg"
 
 html_theme_options = {
     # Logo configuration
     "logo": {
-        "text": "MaldiBatchKit",
-        "image_light": "_static/maldibatchkit_logo.png",
-        "image_dark": "_static/maldibatchkit_logo.png",
+        "image_light": "_static/maldibatchkit_lockup.svg",
+        "image_dark": "_static/maldibatchkit_lockup_dark.svg",
+        "alt_text": "MaldiBatchKit home",
     },
     # Top navigation bar layout
     "navbar_start": ["navbar-logo"],
     "navbar_center": ["navbar-nav"],
     "navbar_end": ["theme-switcher", "navbar-icon-links"],
+    "navbar_persistent": ["search-button"],
+    "navbar_align": "left",
     "header_links_before_dropdown": 4,
-    # Icon links (GitHub, PyPI)
+    # Icon links (MaldiSuite, GitHub, PyPI)
     "icon_links": [
+        {
+            "name": "MaldiSuite",
+            "url": "https://ettorerocchi.github.io/MaldiSuite/",
+            "icon": "_static/maldisuite.svg",
+            "type": "local",
+        },
         {
             "name": "GitHub",
             "url": "https://github.com/EttoreRocchi/MaldiBatchKit",
@@ -181,6 +180,7 @@ html_theme_options = {
     "collapse_navigation": True,
     # Footer
     "footer_start": ["copyright"],
+    "footer_center": ["maldisuite-footer"],
     "footer_end": ["last-updated"],
     # Syntax highlighting
     "pygments_light_style": "default",

@@ -54,11 +54,12 @@ and untouched. ``weights=`` only controls the *across-batch* reducer.
 
 Degenerate folds
 ----------------
-When a batch contains only one class in the held-out fold, AUROC and
-average precision are undefined; F1 / precision / recall fall back to
-zero. These batches are **silently dropped from the aggregate with a
-warning** and the remaining weights are renormalised. Use ``weights=``
-plus a careful split design if you need a different policy.
+A batch with fewer than two samples, or, for every metric except MCC,
+with only one class in the held-out fold, leaves the metric undefined.
+These batches are **dropped from the aggregate with a warning** and the
+remaining weights are renormalised (an array of weights keeps the
+entries of the remaining batches). Use ``weights=`` plus a careful split
+design if you need a different policy.
 
 ``make_batch_scorer`` factory
 -----------------------------
@@ -232,6 +233,15 @@ def _per_batch_metric(
             stacklevel=2,
         )
 
+    if not isinstance(weights, str | Mapping):
+        # An array is aligned with every batch level: keep the kept batches.
+        full = np.asarray(weights, dtype=float)
+        if full.shape != levels.shape:
+            raise ValueError(
+                f"weights array length {full.shape[0]} does not match the number "
+                f"of batch levels {levels.shape[0]}."
+            )
+        weights = full[valid]
     w = _resolve_weights(levels[valid], sizes[valid], weights)
     return float(np.sum(w * scores[valid]))
 

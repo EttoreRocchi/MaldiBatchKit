@@ -1,4 +1,4 @@
-Metrics Module
+Metrics module
 ==============
 
 Batch-aware downstream classifier metrics. Each function computes a
@@ -55,9 +55,10 @@ Within each batch, the wrapped sklearn metric's own averaging parameter
 preserved untouched - ``weights=`` only controls the *across-batch*
 reducer.
 
-Degenerate folds (a batch containing only one class for AUROC / average
-precision) are **silently dropped from the aggregate with a warning**
-and the remaining weights renormalised.
+Degenerate batches are **dropped from the aggregate with a warning** and
+the remaining weights renormalised: batches with fewer than two samples,
+and, for every metric except :func:`~maldibatchkit.metrics.batch_matthews_corrcoef`,
+batches containing only one class.
 
 Per-batch metric functions
 --------------------------

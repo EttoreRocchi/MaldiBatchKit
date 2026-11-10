@@ -5,12 +5,27 @@ Installation
 
    pip install maldibatchkit
 
+MaldiBatchKit requires Python 3.10 or newer.
+
 ``maldiamrkit`` is a core dependency and is installed automatically -
 ``BatchAwareWarping`` reuses :class:`maldiamrkit.alignment.Warping`
 under the hood, and :class:`~maldibatchkit.integrations.MaldiSetAdapter`
-bridges to :class:`maldiamrkit.MaldiSet` for end-to-end AMR workflows.
+applies any corrector to a :class:`maldiamrkit.MaldiSet`.
 
-Optional: Visualisation Extras
+Install the full MaldiSuite
+---------------------------
+
+To install MaldiBatchKit together with
+`MaldiAMRKit <https://github.com/EttoreRocchi/MaldiAMRKit>`__ and
+`MaldiDeepKit <https://github.com/EttoreRocchi/MaldiDeepKit>`__ at
+compatible versions, install the
+`maldisuite <https://pypi.org/project/maldisuite/>`__ meta-package:
+
+.. code-block:: bash
+
+   pip install maldisuite
+
+Optional: visualisation extras
 ------------------------------
 
 For UMAP before/after plots and the diagnostic summary figures:
@@ -19,11 +34,11 @@ For UMAP before/after plots and the diagnostic summary figures:
 
    pip install maldibatchkit[viz]
 
-This pulls in ``umap-learn`` and ``seaborn``. All plotting functions use
-lazy imports, so ``matplotlib`` / ``umap`` are only required when a plot
-is actually rendered.
+This pulls in ``umap-learn`` and ``seaborn``. ``umap-learn`` is imported
+only when :func:`~maldibatchkit.viz.plot_batch_umap` runs; ``matplotlib``
+is a core dependency.
 
-Development Installation
+Development installation
 ------------------------
 
 .. code-block:: bash
@@ -35,7 +50,7 @@ Development Installation
 
 See :doc:`contributing` for coding conventions, testing, and PR guidelines.
 
-Documentation Build
+Documentation build
 -------------------
 
 To build the documentation locally:

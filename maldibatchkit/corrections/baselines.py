@@ -43,9 +43,9 @@ class MedianCentering(BaseBatchCorrector):
     The fitted parameter is a ``(n_batches, n_features)`` table of
     medians. At ``transform`` time, the median for the batch each sample
     belongs to is subtracted. Batches that were absent at ``fit`` time
-    fall back to the grand median learned from training data (with a
-    warning); this keeps the transformer defined on unseen folds without
-    leaking information from the test set.
+    fall back to the grand median learned from training data; this keeps
+    the transformer defined on unseen folds without leaking information
+    from the test set.
 
     Parameters
     ----------

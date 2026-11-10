@@ -1,19 +1,20 @@
-Citation & References
+Citation & references
 =====================
 
-If you use MaldiBatchKit in academic work, please cite:
+MaldiBatchKit is part of MaldiSuite, which is described in an Application
+Note currently under review at *Bioinformatics*. The full citation will be
+added here once the article is published.
 
-   *Citation will be available soon.*
-
-Alongside the upstream references for whichever methods you apply:
+Please also cite the upstream references for whichever methods you apply:
 
 - **Johnson / Fortin / Chen ComBat** - Johnson WE, Li C, Rabinovic A
   (2007). *Adjusting batch effects in microarray expression data using
   empirical Bayes methods*. **Biostatistics** 8(1):118-127.
   Fortin J-P *et al.* (2018). *Harmonization of cortical thickness
   measurements across scanners and sites*. **NeuroImage** 167:104-120.
-  Chen A *et al.* (2022). *Mitigating the impact of batch effects in
-  multi-site neuroimaging studies with CovBat*.
+  Chen AA *et al.* (2022). *Mitigating site effects in covariance for
+  machine learning in neuroimaging data*. **Human Brain Mapping**
+  43(4):1179-1195.
 - **Limma** - Ritchie ME *et al.* (2015). *limma powers differential
   expression analyses for RNA-sequencing and microarray studies*.
   **Nucleic Acids Research** 43(7):e47.

@@ -1,24 +1,23 @@
-Visualization Module
+Visualisation module
 ====================
 
-Plotting helpers for before/after batch-effect inspection. All plotting
-functions use lazy ``matplotlib`` imports, so ``matplotlib`` is only
-required when a plot function is actually called.
+Plotting helpers for before/after batch-effect inspection, built on
+``matplotlib``, a core dependency.
 
-``plot_batch_umap`` additionally requires ``umap-learn`` and can be
-installed via ``pip install maldibatchkit[viz]``.
+``plot_batch_umap`` additionally requires ``umap-learn``, installed via
+``pip install maldibatchkit[viz]``.
 
-UMAP Before/After
+UMAP before/after
 -----------------
 
 .. autofunction:: maldibatchkit.viz.plot_batch_umap
 
-Peak-Shape Overlay
+Peak-shape overlay
 ------------------
 
 .. autofunction:: maldibatchkit.viz.plot_peak_shift
 
-Diagnostic Summary
+Diagnostic summary
 ------------------
 
 .. autofunction:: maldibatchkit.viz.plot_diagnostic_summary

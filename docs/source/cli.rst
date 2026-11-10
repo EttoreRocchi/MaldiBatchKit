@@ -1,4 +1,4 @@
-CLI Reference
+CLI reference
 =============
 
 MaldiBatchKit ships a command-line interface built on `Typer <https://typer.tiangolo.com/>`_,
@@ -28,14 +28,15 @@ Every ``correct`` subcommand shares the same
 for its method. Run ``maldibatchkit correct <method> --help`` to see the
 full option list for any corrector.
 
-Command Reference
+Command reference
 -----------------
 
-.. click:: maldibatchkit.cli:typer_click_object
+.. typer:: maldibatchkit.cli:app
    :prog: maldibatchkit
-   :nested: full
+   :width: 80
+   :show-nested:
 
-Input / Output Formats
+Input / output formats
 ----------------------
 
 * **CSV** - first column is the sample index, remaining columns are
@@ -43,13 +44,19 @@ Input / Output Formats
   first column is the sample id).
 * **NPZ** - a ``np.savez`` archive with at least ``X``, and optionally
   ``columns``, ``index``, and ``batch``. When ``batch`` is bundled in
-  the archive, ``--batch-csv`` becomes optional.
+  the archive, ``--batch-csv`` becomes optional. Without ``index``, the
+  sample IDs are the row numbers ``0`` to ``n - 1``, and sidecar CSVs
+  must use them.
 
-Covariate / Auxiliary CSVs
+The output format follows the extension of ``-o``: ``.npz`` writes an
+archive, any other extension a CSV. Input and output formats can differ.
+
+Covariate / auxiliary CSVs
 --------------------------
 
 The following sidecar CSVs are used by the methods that need them. Each
-has a sample-id column first and one or more data columns after:
+has a header row, a sample-id column first and one or more data columns
+after:
 
 +--------------------------------+----------------------------------+
 | Flag                           | Accepted columns                 |
@@ -69,13 +76,18 @@ has a sample-id column first and one or more data columns after:
 | ``--mz-csv``                   | 1 (m/z per feature, for drift)   |
 +--------------------------------+----------------------------------+
 
+``--design-csv`` columns must be numeric, so encode a categorical design
+as dummies first. ``--mz-csv`` is the exception to the layout above: it
+has no sample IDs, only a header row and one m/z value per feature, read
+from its last column.
+
 Indices in all sidecar CSVs must cover ``X.index``: rows are matched by
 sample ID, and the command fails listing the missing IDs otherwise.
 Sample IDs and labels are read as strings, so ``001`` stays ``001`` and
 ``NA`` is a label, not a missing value. ``--reference-batch`` is matched
 against the batch labels by their string form.
 
-Usage Examples
+Usage examples
 --------------
 
 Vanilla ComBat
@@ -96,7 +108,7 @@ Fortin ComBat with species as a protected categorical covariate:
         --discrete-covariates-csv species.csv \
         -o X_corrected.csv
 
-Species-Aware Preset
+Species-aware preset
 ^^^^^^^^^^^^^^^^^^^^
 
 Exactly the same effect as the previous example, minus the typing
@@ -109,7 +121,7 @@ overhead:
         --species-csv species.csv \
         -o X_corrected.csv
 
-Quality-Weighted ComBat
+Quality-weighted ComBat
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
@@ -143,7 +155,7 @@ Harmony
 ``--nclust`` sets the number of Harmony clusters (default: harmonypy's
 ``round(N / 30)`` heuristic, at least 2).
 
-Batch-Aware Warping
+Batch-aware warping
 ^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
@@ -164,7 +176,7 @@ Diagnostics
         --mz-csv mz.csv --top-k-peaks 40 \
         -o report.csv
 
-NPZ End-to-End
+NPZ end-to-end
 ^^^^^^^^^^^^^^
 
 Bundle ``X``, ``batch``, ``index``, and ``columns`` in a single archive:
@@ -186,7 +198,7 @@ Then every ``correct`` subcommand accepts the NPZ directly:
         --discrete-covariates-csv species.csv \
         -o corrected.npz
 
-Refusal / Error Modes
+Refusal / error modes
 ---------------------
 
 * ``combat-fortin`` without any covariate CSV refuses to run with a hint

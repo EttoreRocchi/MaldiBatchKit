@@ -357,6 +357,15 @@ def correct_limma(
     """limma::removeBatchEffect (Ritchie 2015)."""
     X, batch, extras = load_matrix(input, batch_csv)
     design = load_dataframe_csv(design_csv, X.index) if design_csv else None
+    if design is not None:
+        text = [
+            c for c in design.columns if not pd.api.types.is_numeric_dtype(design[c])
+        ]
+        if text:
+            raise typer.BadParameter(
+                f"--design-csv columns must be numeric; {text} are not. "
+                "Encode categorical covariates as dummy columns first."
+            )
     transformer = Limma(batch=batch, design=design, eps=eps)
     _run_and_save(transformer, X, output, batch, extras)
 

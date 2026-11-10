@@ -1,10 +1,10 @@
-Integrations Module
+Integrations module
 ===================
 
-Bridges between MaldiBatchKit and sibling toolkits in the MaldiSuite
-ecosystem.
+Use MaldiBatchKit correctors directly on the data structures of
+MaldiAMRKit.
 
-MaldiSet Adapter
+MaldiSet adapter
 ----------------
 
 .. autoclass:: maldibatchkit.integrations.MaldiSetAdapter
@@ -39,3 +39,8 @@ Example
 
    corrected_ds.X     # harmonised feature matrix
    corrected_ds.y     # AMR labels, unchanged
+
+``batch_column``, ``species_column`` and ``quality_column`` name columns
+of the metadata behind ``ds.meta``; a missing column raises ``KeyError``.
+A corrector uses only what it accepts: ``quality_column`` has no effect
+with :class:`~maldibatchkit.SpeciesAwareComBat`.

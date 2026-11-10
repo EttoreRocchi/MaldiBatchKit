@@ -3,7 +3,7 @@ Contributing
 
 Thanks for your interest in contributing! Here's how to get started.
 
-Development Setup
+Development setup
 -----------------
 
 .. code-block:: bash
@@ -13,15 +13,15 @@ Development Setup
    pip install -e ".[dev,viz]"
    pre-commit install
 
-Running Tests
+Running tests
 -------------
 
 .. code-block:: bash
 
-   make test        # fast subset (excludes slow tests)
-   make test-cov    # full run with term coverage report
+   make test        # full test suite
+   make test-cov    # full test suite with a terminal coverage report
 
-The coverage gate is 95%. Please add tests for any new public API.
+Please add tests for any new public API.
 
 Linting
 -------
@@ -46,7 +46,7 @@ Style
 - Raise clear ``ImportError`` when optional dependencies are missing
   (see ``Harmony._require_harmonypy`` for the reference style).
 
-Submitting Changes
+Submitting changes
 ------------------
 
 1. Fork the repository and create a feature branch from ``main``.
@@ -56,7 +56,7 @@ Submitting Changes
 5. Open a pull request with a clear title and a body that motivates the
    design decision (not just what changed).
 
-Reporting Issues
+Reporting issues
 ----------------
 
 Open an issue on `GitHub <https://github.com/EttoreRocchi/MaldiBatchKit/issues>`_

@@ -1,4 +1,4 @@
-Diagnostics Module
+Diagnostics module
 ==================
 
 Quantitative checks that a correction step actually removed batch
@@ -13,8 +13,10 @@ convenience report helper:
   metric on a ``(before, after)`` pair and collapse it into a tidy
   DataFrame suitable for downstream tables and plots.
 
-All metrics take the same ``(X, batch)`` signature and return scalars
-or tidy ``pandas`` objects.
+Most metrics take ``(X, batch)``; ``per_batch_spectrum_count`` takes only
+``batch`` and ``diagnostic_report`` takes ``(before, after, batch)``.
+``silhouette_batch`` and ``lisi`` return a float, ``kbet`` a dict, and the
+MALDI-specific metrics and the report ``pandas`` objects.
 
 .. warning::
 
@@ -22,7 +24,7 @@ or tidy ``pandas`` objects.
    preserved. Always pair them with a supervised metric (AMR classifier
    AUROC, VME, ...) in any real comparison of correctors.
 
-Generic Batch-Mixing Metrics
+Generic batch-mixing metrics
 ----------------------------
 
 .. autofunction:: maldibatchkit.diagnostics.silhouette_batch
@@ -31,7 +33,7 @@ Generic Batch-Mixing Metrics
 
 .. autofunction:: maldibatchkit.diagnostics.lisi
 
-MALDI-Specific Metrics
+MALDI-specific metrics
 ----------------------
 
 .. autofunction:: maldibatchkit.diagnostics.peak_position_drift
@@ -40,7 +42,7 @@ MALDI-Specific Metrics
 
 .. autofunction:: maldibatchkit.diagnostics.per_batch_spectrum_count
 
-Combined Report
+Combined report
 ---------------
 
 .. autofunction:: maldibatchkit.diagnostics.diagnostic_report
@@ -75,11 +77,12 @@ Example
        X, X_corrected, batch,
        mz_values=mz, top_k_peaks=40,
    )
-   print(report.head())
-   #              metric    scope  value_before  value_after     delta  better
-   # 0  silhouette_batch  overall         0.311        0.042    -0.269   lower
-   # 1  kbet_acceptance   overall         0.124        0.561     0.437  higher
-   # 2              lisi  overall         1.420        2.310     0.890  higher
+   print(report[report["scope"] == "overall"])
+   #                  metric    scope  value_before  value_after   delta  better
+   # 0      silhouette_batch  overall         0.147       -0.011  -0.159   lower
+   # 1  kbet_acceptance_rate  overall         0.020        0.262   0.242  higher
+   # 2        kbet_mean_chi2  overall        54.016       15.746 -38.270   lower
+   # 3                  lisi  overall         1.015        1.236   0.222  higher
 
    # Quick bar-chart visualisation of the overall metrics
    plot_diagnostic_summary(report, scope="overall")

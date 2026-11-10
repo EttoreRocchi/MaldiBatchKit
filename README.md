@@ -9,7 +9,10 @@
 [![License](https://img.shields.io/github/license/EttoreRocchi/MaldiBatchKit)](https://github.com/EttoreRocchi/MaldiBatchKit/blob/main/LICENSE)
 
 <p align="center">
-  <img src="docs/maldibatchkit_logo.png" alt="MaldiBatchKit" width="320"/>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/EttoreRocchi/MaldiBatchKit/main/docs/maldibatchkit_logo_dark.png">
+    <img src="https://raw.githubusercontent.com/EttoreRocchi/MaldiBatchKit/main/docs/maldibatchkit_logo.png" alt="MaldiBatchKit" width="320"/>
+  </picture>
 </p>
 
 <p align="center">
@@ -17,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/batch_correction.svg" alt="Animated scatter plot: before correction MALDI-TOF samples cluster by acquisition site; after MaldiBatchKit the site effect is removed and samples cluster by species" width="720"/>
+  <img src="https://raw.githubusercontent.com/EttoreRocchi/MaldiBatchKit/main/docs/batch_correction.svg" alt="Animated scatter plot: before correction MALDI-TOF samples cluster by acquisition site; after MaldiBatchKit the site effect is removed and samples cluster by species" width="720"/>
 </p>
 
 <p align="center">
@@ -30,7 +33,7 @@
   <a href="#citation">Citation</a>
 </p>
 
-MaldiBatchKit is part of the **MaldiSuite** ecosystem and complements [MaldiAMRKit](https://github.com/EttoreRocchi/MaldiAMRKit): where MaldiAMRKit handles preprocessing, alignment and AMR-aware evaluation, MaldiBatchKit focuses on the *harmonization* step, removing the inter-batch / inter-site shifts that plague multi-centre MALDI-TOF studies.
+MaldiBatchKit corrects the inter-batch and inter-site shifts of multi-centre MALDI-TOF studies. It is part of the **MaldiSuite** ecosystem: it can be used on its own, or together with [MaldiAMRKit](https://github.com/EttoreRocchi/MaldiAMRKit) and [MaldiDeepKit](https://github.com/EttoreRocchi/MaldiDeepKit).
 
 ## Installation
 
@@ -71,8 +74,8 @@ Visit the **MaldiSuite** landing page at <https://ettorerocchi.github.io/MaldiSu
   - `SpeciesAwareComBat` - convenience preset for ComBat-Fortin with `species` as the protected biological covariate.
 - **Diagnostics**: kBET, LISI, silhouette-by-batch, per-batch peak drift, per-batch TIC coefficient of variation, per-batch spectrum count, plus a combined `diagnostic_report` DataFrame summary.
 - **Method selection**: `AutoCorrector` exposes `method` as a settable hyperparameter so `GridSearchCV` can sweep across corrector families and let the downstream classifier metric (AUROC) decide. Ships with a `NoOpCorrector` so "do nothing" can sit on the candidate list as an honest baseline.
-- **Diagnostic benchmark**: `BatchCorrectionBenchmark` runs a fixed set of metrics across multiple correctors with stratified bootstrap CIs and a tidy `(method, metric, value, ci_lo, ci_hi)` summary, ready for paper-figure comparisons.
-- **Visualization**: UMAP before/after, per-batch peak-shape overlays, before/after bar charts.
+- **Diagnostic benchmark**: `BatchCorrectionBenchmark` runs a fixed set of metrics across multiple correctors with intervals from stratified subsamples and a tidy `(method, metric, value, ci_lo, ci_hi)` summary, ready for paper-figure comparisons.
+- **Visualisation**: UMAP before/after, per-batch peak-shape overlays, before/after bar charts.
 - **Integration adapter**: `MaldiSetAdapter` turns a `maldiamrkit.MaldiSet` into a corrected `MaldiSet` in one call.
 - **CLI**: `maldibatchkit correct ...` and `maldibatchkit diagnose ...`.
 
@@ -122,6 +125,8 @@ corrected_ds = adapter.correct(ds, SpeciesAwareComBat)
 corrected_ds.X      # harmonised feature matrix
 corrected_ds.y      # AMR labels, unchanged
 ```
+
+The `*_column` arguments name columns of the metadata behind `ds.meta`; a missing column raises `KeyError`. A corrector uses only what it accepts: `quality_column` has no effect with `SpeciesAwareComBat`.
 
 ### CLI
 
@@ -197,7 +202,7 @@ from sklearn.pipeline import Pipeline
 from maldibatchkit import AutoCorrector
 
 pipe = Pipeline([
-    ("correct", AutoCorrector(batch=batch, discrete_covariates=species)),
+    ("correct", AutoCorrector(batch=batch, discrete_covariates=species, quality=snr)),
     ("clf", LogisticRegression(max_iter=1000)),
 ])
 grid = GridSearchCV(
@@ -294,26 +299,24 @@ from maldibatchkit.diagnostics import (
 )
 ```
 
-All metrics take the same `(X, batch)` signature. `diagnostic_report` composes them into a tidy DataFrame suitable for `plot_diagnostic_summary`.
+Most metrics take `(X, batch)`; `per_batch_spectrum_count` takes only `batch`. `diagnostic_report(before, after, batch)` composes them into a tidy DataFrame suitable for `plot_diagnostic_summary`.
 
-## MaldiSuite Ecosystem
+## MaldiSuite ecosystem
 
-MaldiBatchKit is the harmonisation package of the **MaldiSuite** ecosystem:
+MaldiBatchKit is one of the three packages of the **MaldiSuite** ecosystem:
 
 - **[MaldiAMRKit](https://github.com/EttoreRocchi/MaldiAMRKit)** - data model (`MaldiSpectrum`, `MaldiSet`), preprocessing, alignment, peak detection, differential analysis, and AMR-aware evaluation.
 - **MaldiBatchKit** (this package) - batch-effect correction and harmonisation for multi-centre / multi-instrument MALDI-TOF spectra.
 - **[MaldiDeepKit](https://github.com/EttoreRocchi/MaldiDeepKit)** - sklearn-compatible deep learning classifiers (MLP, CNN, ResNet, Transformer).
 
-The three packages share the `MaldiSet` / `MaldiSpectrum` data model and are designed to compose in a single end-to-end pipeline. Install the full suite with `pip install maldisuite`. Landing page: [MaldiSuite](<https://ettorerocchi.github.io/MaldiSuite/>).
+The three packages share the `MaldiSet` data model. Each can be used on its own, or combined with the others. Install the full suite with `pip install maldisuite`. Landing page: [MaldiSuite](<https://ettorerocchi.github.io/MaldiSuite/>).
 
 ## Citation
 
-If you use MaldiBatchKit in academic work please cite:
+MaldiBatchKit is part of MaldiSuite, which is described in an Application Note currently under review at *Bioinformatics*. The full citation will be added here once the article is published.
 
-> _Citation will be available soon._
-
-along with the upstream references for whichever methods you apply (Johnson 2007, Fortin 2018, Chen 2022, Ritchie 2015, Korsunsky 2019).
+Please also cite the upstream references for whichever methods you apply (Johnson 2007, Fortin 2018, Chen 2022, Ritchie 2015, Korsunsky 2019).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/EttoreRocchi/MaldiBatchKit/blob/main/LICENSE).

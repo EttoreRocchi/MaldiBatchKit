@@ -5,6 +5,18 @@ All notable changes to MaldiBatchKit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-11-10
+
+### Changed
+
+- Docs: shared MaldiSuite theme and links to the other MaldiSuite packages.
+
+### Fixed
+
+- `batch_*_score` metrics: an array of `weights` no longer raises `ValueError` when a degenerate batch is dropped; it keeps the weights of the remaining batches.
+- CLI: `correct limma` refuses a `--design-csv` with non-numeric columns with a usage error (was a traceback).
+- The `ImportError` of `BatchAwareWarping` asks for `maldiamrkit>=0.15.0`, the pinned minimum (was 0.13.0), and the `MedianCentering` and `metrics` docstrings describe the fallback and degenerate-batch behaviour of the code.
+
 ## [0.2.1] - 2026-11-06
 
 ### Fixed
@@ -55,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Initial release.
 
+[0.2.2]: https://github.com/EttoreRocchi/MaldiBatchKit/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/EttoreRocchi/MaldiBatchKit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/EttoreRocchi/MaldiBatchKit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/EttoreRocchi/MaldiBatchKit/releases/tag/v0.1.0

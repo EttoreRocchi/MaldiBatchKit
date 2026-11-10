@@ -376,3 +376,25 @@ def test_single_class_batch_dropped_for_f1_precision_recall(fn):
         with pytest.warns(UserWarning, match="dropped"):
             v = fn(y, y.copy(), batch=batch)
     assert v == pytest.approx(1.0)
+
+
+def test_array_weights_follow_dropped_batches():
+    """An array of weights stays aligned when a single-class batch is dropped."""
+    batch = np.array(["a"] * 10 + ["b"] * 10 + ["c"] * 10)
+    y = np.array([0] * 10 + [0, 1] * 5 + [0, 1] * 5)
+    score = np.linspace(0.0, 1.0, 30)
+    with pytest.warns(UserWarning, match="dropped"):
+        got = batch_roc_auc_score(y, score, batch=batch, weights=[5.0, 1.0, 3.0])
+    with pytest.warns(UserWarning, match="dropped"):
+        ref = batch_roc_auc_score(
+            y, score, batch=batch, weights={"a": 5.0, "b": 1.0, "c": 3.0}
+        )
+    assert got == pytest.approx(ref)
+
+
+def test_array_weights_wrong_length_raises():
+    batch = np.array(["a"] * 4 + ["b"] * 4 + ["c"] * 4)
+    y = np.array([0, 1] * 6)
+    score = np.linspace(0.0, 1.0, 12)
+    with pytest.raises(ValueError, match="does not match"):
+        batch_roc_auc_score(y, score, batch=batch, weights=[1.0, 1.0])

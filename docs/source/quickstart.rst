@@ -1,4 +1,4 @@
-Quickstart Guide
+Quickstart guide
 ================
 
 This guide walks through the MaldiBatchKit API from a single ComBat call
@@ -22,7 +22,7 @@ Apply Johnson (2007) ComBat to a single harmonisation:
    corrector = ComBat(batch=batch, method="johnson")
    X_corrected = corrector.fit_transform(X)
 
-Covariate-Aware ComBat (Fortin)
+Covariate-aware ComBat (Fortin)
 -------------------------------
 
 Protect biological covariates with Fortin (2018):
@@ -39,7 +39,7 @@ Protect biological covariates with Fortin (2018):
    )
    X_corrected = corrector.fit_transform(X)
 
-Species-Aware Preset
+Species-aware preset
 --------------------
 
 :class:`~maldibatchkit.SpeciesAwareComBat` is a convenience wrapper for
@@ -52,7 +52,7 @@ the common case of "Fortin with species as the protected covariate":
    corrector = SpeciesAwareComBat(batch=batch, species=species)
    X_corrected = corrector.fit_transform(X)
 
-Quality-Weighted ComBat
+Quality-weighted ComBat
 -----------------------
 
 Weight samples by a per-sample quality score (typically SNR) so
@@ -70,7 +70,7 @@ low-quality spectra contribute less to the shrinkage prior:
    )
    X_corrected = corrector.fit_transform(X)
 
-Train/Test Without Leakage
+Train/test without leakage
 --------------------------
 
 Every corrector follows the standard sklearn ``fit`` / ``transform``
@@ -96,7 +96,7 @@ split with the fitted parameters:
 ``batch`` is indexed by the same sample IDs as ``X``, so the corrector
 slices the right subset on each call.
 
-Inside an Sklearn Pipeline
+Inside an sklearn pipeline
 --------------------------
 
 All correctors expose ``fit`` / ``transform`` / ``fit_transform`` and are
@@ -120,7 +120,7 @@ drop-in pipeline steps:
    scores = cross_val_score(pipe, X, y, cv=5, scoring="roc_auc")
    print(f"AUROC: {scores.mean():.3f} +/- {scores.std():.3f}")
 
-Linear-Model Subtraction (Limma)
+Linear-model subtraction (Limma)
 --------------------------------
 
 ``Limma`` is a pure-Python implementation of ``limma::removeBatchEffect``
@@ -138,8 +138,10 @@ Harmony
 -------
 
 :class:`~maldibatchkit.Harmony` wraps ``harmonypy`` for iterative
-soft-clustering integration. Like the ``harmonypy`` reference, the
-corrector is fit-transform only (no clean test-time application):
+soft-clustering integration. ``fit`` freezes the PCA, the cluster
+centroids and the per-batch correction, so ``transform`` applies them to
+held-out rows of the batches seen at fit time; an unseen batch raises
+``ValueError``:
 
 .. code-block:: python
 
@@ -154,7 +156,7 @@ corrector is fit-transform only (no clean test-time application):
    )
    X_corrected = corrector.fit_transform(X)
 
-Simple Baselines
+Simple baselines
 ----------------
 
 Auditable, no-covariate alternatives useful for sanity checks:
@@ -167,7 +169,7 @@ Auditable, no-covariate alternatives useful for sanity checks:
    zscored = ZScorePerBatch(batch=batch).fit_transform(X)
    ref = ReferenceScaling(batch=batch, reference_batch="site_A").fit_transform(X)
 
-MALDI-Specific: Batch-Aware Warping
+MALDI-specific: batch-aware warping
 -----------------------------------
 
 :class:`~maldibatchkit.BatchAwareWarping` is a MALDI-specific corrector
@@ -232,7 +234,7 @@ The report is a tidy DataFrame with ``metric`` / ``scope`` /
 ``value_before`` / ``value_after`` / ``delta`` columns - suitable for
 further pandas manipulation or for the bundled plotting helpers.
 
-Visualization
+Visualisation
 -------------
 
 .. code-block:: python
@@ -252,7 +254,7 @@ Visualization
    # Before/after bar chart built from a diagnostic_report
    plot_diagnostic_summary(report, scope="overall")
 
-MaldiSet Integration
+MaldiSet integration
 --------------------
 
 :class:`~maldibatchkit.integrations.MaldiSetAdapter` lets you correct a
@@ -280,7 +282,12 @@ whose ``X`` is harmonised and whose AMR labels / metadata are untouched:
    corrected_ds.X      # harmonised feature matrix
    corrected_ds.y      # AMR labels, unchanged
 
-Command-Line Interface
+``batch_column``, ``species_column`` and ``quality_column`` name columns
+of the metadata behind ``ds.meta``; a missing column raises ``KeyError``.
+A corrector uses only what it accepts: ``quality_column`` has no effect
+with :class:`~maldibatchkit.SpeciesAwareComBat`.
+
+Command-line interface
 ----------------------
 
 MaldiBatchKit ships a Typer-based CLI organised as

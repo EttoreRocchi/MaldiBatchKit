@@ -6,7 +6,7 @@ Every corrector shipped with MaldiBatchKit is a subclass of
 the same contract: subclass the base, implement two methods, and you
 get a scikit-learn compatible, train/test-safe transformer for free.
 
-Why Inherit?
+Why inherit?
 ------------
 
 :class:`~maldibatchkit.BaseBatchCorrector` solves the two awkward parts
@@ -27,7 +27,7 @@ The base class additionally handles NaN / finite checks,
 ``feature_names_in_`` / ``n_features_in_`` / ``get_feature_names_out``
 so your corrector behaves like any other sklearn transformer.
 
-Minimal Subclass
+Minimal subclass
 ----------------
 
 Two methods are required: :meth:`~maldibatchkit.BaseBatchCorrector._fit_impl`
@@ -70,7 +70,7 @@ The inherited :meth:`~maldibatchkit.BaseBatchCorrector.fit`,
    corrector = MeanCentering(batch=batch)
    X_corrected = corrector.fit_transform(X)
 
-Adding Hyperparameters
+Adding hyperparameters
 ----------------------
 
 Override ``__init__`` to add method-specific hyperparameters. Always
@@ -101,7 +101,7 @@ under ``self.batch`` so
                out.loc[mask] = out.loc[mask].to_numpy() - offset
            return out
 
-Dropping It Into a Pipeline
+Dropping it into a pipeline
 ---------------------------
 
 Custom correctors are drop-in sklearn ``Pipeline`` steps. Because the
@@ -122,7 +122,7 @@ cross-validate without leakage:
    ])
    scores = cross_val_score(pipe, X, y, cv=5, scoring="roc_auc")
 
-Adding Covariates
+Adding covariates
 -----------------
 
 If your corrector needs more than ``batch`` (for example species or a
@@ -192,7 +192,7 @@ for custom correctors:
   ``ModuleNotFoundError`` propagate. See
   :class:`~maldibatchkit.Harmony` for the reference pattern.
 
-Reference Implementations
+Reference implementations
 -------------------------
 
 The simplest real-world examples are in the ``baselines`` module - read
