@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <strong>Batch-effect correction methods for MALDI-TOF spectra in clinical AMR prediction workflows</strong>
+  <strong>Batch-effect correction for multi-site MALDI-TOF spectra</strong>
 </p>
 
 <p align="center">
@@ -229,7 +229,7 @@ bench = BatchCorrectionBenchmark(
 bench.rank(by="species_preservation")
 ```
 
-See [docs / Choosing a corrector](https://maldibatchkit.readthedocs.io/en/latest/choosing.html) for the full recipe.
+See [docs / Choosing a corrector](https://maldibatchkit.readthedocs.io/en/stable/choosing.html) for the full recipe.
 
 ## Extending MaldiBatchKit
 
@@ -316,6 +316,8 @@ The three packages share the `MaldiSet` data model. Each can be used on its own,
 MaldiBatchKit is part of MaldiSuite, which is described in an Application Note currently under review at *Bioinformatics*. The full citation will be added here once the article is published.
 
 Please also cite the upstream references for whichever methods you apply (Johnson 2007, Fortin 2018, Chen 2022, Ritchie 2015, Korsunsky 2019).
+
+Publications using MaldiSuite are listed on the [MaldiSuite website](https://ettorerocchi.github.io/MaldiSuite/#research).
 
 ## License
 

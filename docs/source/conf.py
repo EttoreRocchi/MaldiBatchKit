@@ -91,7 +91,7 @@ intersphinx_mapping = {
     "pandas": ("https://pandas.pydata.org/docs/", None),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
-    "maldiamrkit": ("https://maldiamrkit.readthedocs.io/en/latest/", None),
+    "maldiamrkit": ("https://maldiamrkit.readthedocs.io/en/stable/", None),
     "combatlearn": ("https://combatlearn.readthedocs.io/en/latest/", None),
 }
 

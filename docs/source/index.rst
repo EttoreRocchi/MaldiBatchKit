@@ -15,10 +15,9 @@
 MaldiBatchKit documentation
 ===========================
 
-Batch-effect correction methods for MALDI-TOF mass spectrometry in
-clinical AMR prediction workflows. Scikit-learn compatible transformers,
-unified CLI, and a diagnostics suite for quantifying batch mixing before
-and after correction.
+Batch-effect correction for multi-site MALDI-TOF spectra. Scikit-learn
+compatible transformers, unified CLI, and a diagnostics suite for
+quantifying batch mixing before and after correction.
 
 .. container:: sd-d-flex-row sd-flex-justify-content-center sd-gap-2 sd-mb-4
 

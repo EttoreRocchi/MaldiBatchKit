@@ -1,5 +1,5 @@
-Citation & references
-=====================
+Citation and references
+=======================
 
 MaldiBatchKit is part of MaldiSuite, which is described in an Application
 Note currently under review at *Bioinformatics*. The full citation will be
@@ -24,11 +24,5 @@ Please also cite the upstream references for whichever methods you apply:
 - **kBET** - Büttner M *et al.* (2019). *A test metric for assessing
   single-cell RNA-seq batch correction*. **Nature Methods** 16:43-49.
 
-Related publications using the wider MaldiSuite:
-
-- Rocchi, E., Nicitra, E., Calvo, M. et al. *Combining mass spectrometry
-  and machine learning models for predicting Klebsiella pneumoniae
-  antimicrobial resistance: a multicenter experience from clinical
-  isolates in Italy*. **BMC Microbiol** (2026).
-  `doi:10.1186/s12866-025-04657-2
-  <https://doi.org/10.1186/s12866-025-04657-2>`_
+Publications using MaldiSuite are listed on the
+`MaldiSuite website <https://ettorerocchi.github.io/MaldiSuite/#research>`_.
